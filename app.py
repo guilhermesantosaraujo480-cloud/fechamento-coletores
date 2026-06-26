@@ -3,7 +3,6 @@ import pandas as pd
 from datetime import datetime
 import time
 from supabase import create_client, Client
-import extra_streamlit_components as stx
 
 # Configuração da página (otimizada para celular)
 st.set_page_config(page_title="Sistema Vivo Coletas", layout="centered", initial_sidebar_state="collapsed")
@@ -21,30 +20,25 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
-# ----------------- GERENCIAMENTO DE SESSÃO ESTÁVEL -----------------
+# ----------------- NOVA ESTRATÉGIA DE SESSÃO (VIA URL QUERY PARAMS) -----------------
 if "logado" not in st.session_state:
     st.session_state["logado"] = False
     st.session_state["usuario_atual"] = None
     st.session_state["nome_completo_atual"] = None
     st.session_state["cargo_atual"] = None
 
-# ESTRATÉGIA ANTIFLICKER: Só mexe com cookies se o usuário NÃO estiver logado na sessão ativa
-if not st.session_state["logado"]:
-    cookie_manager = stx.CookieManager(key="gerenciador_cookies_vivo")
-    
-    # Dá um tempo sutil para o componente carregar na tela de login
-    time.sleep(0.1)
-    
-    cookie_usuario = cookie_manager.get(cookie="vivo_coletas_user")
-    cookie_nome = cookie_manager.get(cookie="vivo_coletas_nome")
-    cookie_cargo = cookie_manager.get(cookie="vivo_coletas_cargo")
-    
-    if cookie_usuario and cookie_nome and cookie_cargo:
-        st.session_state["logado"] = True
-        st.session_state["usuario_atual"] = cookie_usuario
-        st.session_state["nome_completo_atual"] = cookie_nome
-        st.session_state["cargo_atual"] = cookie_cargo
-        st.rerun()
+# SEGUNDA CAMADA DE SEGURANÇA: Se der F5, reconecta direto pela URL de forma nativa
+if not st.session_state["logado"] and "u" in st.query_params:
+    user_url = st.query_params["u"]
+    try:
+        resposta = supabase.table("usuarios").select("*").eq("usuario", user_url).execute()
+        if resposta.data:
+            st.session_state["logado"] = True
+            st.session_state["usuario_atual"] = user_url
+            st.session_state["nome_completo_atual"] = resposta.data[0]["nome_completo"]
+            st.session_state["cargo_atual"] = resposta.data[0]["cargo"]
+    except Exception:
+        pass # Ignora silenciosamente se houver erro de rede no F5 inicial
 
 if "reset_ctr" not in st.session_state:
     st.session_state["reset_ctr"] = 0
@@ -79,20 +73,17 @@ if not st.session_state["logado"]:
             user_valido = resposta.data
             
             if user_valido:
-                # Grava no estado interno imediatamente
+                # 1. Salva no Session State do Streamlit para navegação rápida
                 st.session_state["logado"] = True
                 st.session_state["usuario_atual"] = user_input
                 st.session_state["nome_completo_atual"] = user_valido[0]["nome_completo"]
                 st.session_state["cargo_atual"] = user_valido[0]["cargo"]
                 
-                # Salva nos cookies para o próximo F5
-                valido_ate = datetime.now() + pd.Timedelta(days=30)
-                cookie_manager.set("vivo_coletas_user", user_input, expires_at=valido_ate)
-                cookie_manager.set("vivo_coletas_nome", user_valido[0]["nome_completo"], expires_at=valido_ate)
-                cookie_manager.set("vivo_coletas_cargo", user_valido[0]["cargo"], expires_at=valido_ate)
+                # 2. Salva na URL nativa de forma limpa para aguentar o F5
+                st.query_params["u"] = user_input
                 
                 st.success(f"Bem-vindo, {st.session_state['nome_completo_atual']}!")
-                time.sleep(0.4)
+                time.sleep(0.3)
                 st.rerun()
             else:
                 st.error("Usuário ou senha incorretos.")
@@ -105,12 +96,8 @@ else:
     col_user.write(f"👤 Conectado: **{st.session_state['nome_completo_atual']}** ({st.session_state['cargo_atual']})")
     
     if col_logout.button("Sair", use_container_width=True):
-        # Inicializa o manager apenas para deletar os cookies no logout
-        cm_logout = stx.CookieManager(key="logout_cookies")
-        time.sleep(0.1)
-        cm_logout.delete("vivo_coletas_user")
-        cm_logout.delete("vivo_coletas_nome")
-        cm_logout.delete("vivo_coletas_cargo")
+        # Limpa os parâmetros da URL nativa
+        st.query_params.clear()
         
         # Limpa Session State
         st.session_state["logado"] = False
@@ -118,7 +105,6 @@ else:
         st.session_state["nome_completo_atual"] = None
         st.session_state["cargo_atual"] = None
         
-        time.sleep(0.2)
         st.rerun()
 
     # =========================================================================
