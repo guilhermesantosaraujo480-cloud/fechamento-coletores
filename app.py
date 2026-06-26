@@ -316,7 +316,7 @@ else:
                                 "data": datetime.now().strftime("%Y-%m-%d"),
                                 "coletor": st.session_state['nome_completo_atual'], 
                                 "quantidade": int(quantidade),
-                                "foto_name": foto_url_final,
+                                "foto_url": foto_url_final,
                                 "foto_nome": foto_url_final,
                                 "status": "Pendente", 
                                 "valor_total": round(float(quantidade * VALOR_POR_COLETA), 2),
