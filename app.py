@@ -175,8 +175,11 @@ else:
             
             if not aprovados_periodo.empty:
                 total_bruto = aprovados_periodo["valor_total"].sum()
-                # Regra: Entra para o cálculo apenas se "pago" for estritamente False (A receber)
-                total_nao_pago_adm = aprovados_periodo[aprovados_periodo["pago"] == False]["valor_total"].sum()
+                # CORREÇÃO LINEAR TEXTO: Filtra buscando onde a string do banco é "Não" ou False (para tolerar ambos)
+                total_nao_pago_adm = aprovados_periodo[
+                    (aprovados_periodo["pago"].astype(str).str.lower() == "não") | 
+                    (aprovados_periodo["pago"] == False)
+                ]["valor_total"].sum()
             else:
                 total_bruto = 0.0
                 total_nao_pago_adm = 0.0
@@ -193,17 +196,18 @@ else:
                 st.info("Nenhuma coleta aprovada neste período.")
             else:
                 for index, row in aprovados_periodo.iterrows():
-                    pago_atual = row.get('pago', False)
-                    status_pago_txt = "✅ Já Pago" if pago_atual is True else "❌ Não Pago"
+                    pago_atual = row.get('pago', "Não")
+                    # CORREÇÃO LINEAR TEXTO: Valida exibição aceitando texto ou booleano
+                    status_pago_txt = "✅ Já Pago" if (str(pago_atual).lower() in ["sim", "true"]) else "❌ Não Pago"
                     
                     col_p1, col_p2 = st.columns([3, 2])
                     with col_p1:
                         st.write(f"**{row['coletor']}** | R$ {float(row['valor_total']):.2f} | Data: {row['data']} ({status_pago_txt})")
                     with col_p2:
-                        if pago_atual is not True:
+                        if str(pago_atual).lower() not in ["sim", "true"]:
                             if st.button(f"Marcar como Pago", key=f"pag_{row['id']}"):
-                                # Muda linearmente de False para True no banco
-                                supabase.table("coletas").update({"pago": True}).eq("id", row["id"]).execute()
+                                # CORREÇÃO LINEAR TEXTO: Salva como "Sim" condizente com a regra string
+                                supabase.table("coletas").update({"pago": "Sim"}).eq("id", row["id"]).execute()
                                 st.rerun()
                     st.markdown("---")
 
@@ -294,7 +298,7 @@ else:
                             
                             foto_url_final = supabase.storage.from_("comprovantes").get_public_url(nome_foto_nuvem)
                             
-                            # Envia estritamente "False" booleano combinando com o tipo da coluna do banco
+                            # CORREÇÃO LINEAR TEXTO: Envia como "Não" em string para passar direto pelo seu RLS atual
                             novo_registro = {
                                 "data": datetime.now().strftime("%Y-%m-%d"), 
                                 "coletor": st.session_state['nome_completo_atual'], 
@@ -302,7 +306,7 @@ else:
                                 "foto_url": foto_url_final, 
                                 "status": "Pendente", 
                                 "valor_total": round(float(quantidade * VALOR_POR_COLETA), 2),
-                                "pago": False
+                                "pago": "Não"
                             }
                             
                             supabase.table("coletas").insert(novo_registro).execute()
@@ -358,9 +362,9 @@ else:
                     else:
                         vales_dele = 0.0
                     
-                    # Filtros puramente booleanos baseados na estrutura linear
-                    total_ja_pago = aprovadas[aprovadas["pago"] == True]["valor_total"].sum() if not aprovadas.empty else 0.0
-                    total_nao_pago = aprovadas[aprovadas["pago"] == False]["valor_total"].sum() if not aprovadas.empty else 0.0
+                    # CORREÇÃO LINEAR TEXTO: Valida os cálculos baseado em String
+                    total_ja_pago = aprovadas[aprovadas["pago"].astype(str).str.lower().isin(["sim", "true"])]["valor_total"].sum() if not aprovadas.empty else 0.0
+                    total_nao_pago = aprovadas[aprovadas["pago"].astype(str).str.lower().isin(["não", "false"])]["valor_total"].sum() if not aprovadas.empty else 0.0
                     
                     total_liquido_coletor = max(0.0, round(float(total_nao_pago) - float(vales_dele), 2))
                     
@@ -372,7 +376,7 @@ else:
                     st.markdown("### Envios do Período")
                     for idx, row in dados_coletor.iloc[::-1].iterrows():
                         status_cor = "🟢" if row['status'] == "Aprovado" else "🟡" if row['status'] == "Pendente" else "🔴"
-                        status_pago_txt = "💰 Pago" if row.get('pago') == True else "⏳ Pendente de Pgto"
+                        status_pago_txt = "💰 Pago" if str(row.get('pago')).lower() in ["sim", "true"] else "⏳ Pendente de Pgto"
                         
                         if row['status'] == "Recusado":
                             with st.expander(f"🔴 Data: {row['data']} | Qtd: {row['quantidade']} | REPROVADA"):
