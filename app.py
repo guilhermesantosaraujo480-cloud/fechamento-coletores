@@ -103,7 +103,7 @@ if not st.session_state["logado"]:
                 st.query_params["session"] = novo_token
                 
                 st.success(f"Bem-vindo, {st.session_state['nome_completo_atual']}!")
-                time.sleep(0.1)  # Tempo reduzido para resposta instantânea
+                time.sleep(0.1)
                 st.rerun()
             else:
                 st.error("Usuário ou senha incorretos.")
@@ -137,46 +137,59 @@ else:
         st.subheader("🛡️ Painel do Administrador")
         sub_menu_adm = st.tabs(["📋 Gestão de Coletas", "📉 Registrar/Ver Vales", "👤 Cadastrar Usuários"])
         
-        with sub_menu_adm[0]:
-            try:
-                res_coletas = supabase.table("coletas").select("*").execute()
-                # Usa a listagem otimizada com cache para poupar o banco
-                res_users_data = listar_usuarios_cache()
-                
-                df = pd.DataFrame(res_coletas.data) if res_coletas.data else pd.DataFrame(columns=["id", "data", "coletor", "quantidade", "foto_url", "status", "valor_total", "pago"])
-                lista_coletores = ["Todos"] + [u["nome_completo"] for u in res_users_data if u.get("cargo") == "COLETOR"]
-            except Exception as e:
-                st.error(f"Erro ao carregar dados do banco: {e}")
-                df = pd.DataFrame(columns=["id", "data", "coletor", "quantidade", "foto_url", "status", "valor_total", "pago"])
-                lista_coletores = ["Todos"]
+        # Pré-carregamento dos dados de vales e coletas para cruzar informações nas abas
+        try:
+            res_coletas = supabase.table("coletas").select("*").execute()
+            res_vales = supabase.table("vales_coleta").select("*").execute()
+            res_users_data = listar_usuarios_cache()
             
-            st.subheader("🔍 Filtros de Busca")
-            col_f1, col_f2, col_f3 = st.columns(3)
-            with col_f1:
-                data_inicio = st.date_input("Data Início:", value=st.session_state["filtro_data_inicio"])
-            with col_f2:
-                data_fim = st.date_input("Data Fim:", value=st.session_state["filtro_data_fim"])
-            with col_f3:
-                coletor_sel = st.selectbox("Filtrar por Coletor:", lista_coletores, index=lista_coletores.index(st.session_state["filtro_coletor"]) if st.session_state["filtro_coletor"] in lista_coletores else 0)
+            df = pd.DataFrame(res_coletas.data) if res_coletas.data else pd.DataFrame(columns=["id", "data", "coletor", "quantidade", "foto_url", "status", "valor_total", "pago"])
+            df_vales = pd.DataFrame(res_vales.data) if res_vales.data else pd.DataFrame(columns=["id", "data", "coletor", "valor_vale", "descricao"])
+            lista_coletores = ["Todos"] + [u["nome_completo"] for u in res_users_data if u.get("cargo") == "COLETOR"]
+        except Exception as e:
+            st.error(f"Erro ao carregar dados do banco: {e}")
+            df = pd.DataFrame(columns=["id", "data", "coletor", "quantidade", "foto_url", "status", "valor_total", "pago"])
+            df_vales = pd.DataFrame(columns=["id", "data", "coletor", "valor_vale", "descricao"])
+            lista_coletores = ["Todos"]
             
-            st.session_state["filtro_data_inicio"] = data_inicio
-            st.session_state["filtro_data_fim"] = data_fim
-            st.session_state["filtro_coletor"] = coletor_sel
+        st.subheader("🔍 Filtros Gerais do Período")
+        col_f1, col_f2, col_f3 = st.columns(3)
+        with col_f1:
+            data_inicio = st.date_input("Data Início:", value=st.session_state["filtro_data_inicio"])
+        with col_f2:
+            data_fim = st.date_input("Data Fim:", value=st.session_state["filtro_data_fim"])
+        with col_f3:
+            coletor_sel = st.selectbox("Filtrar por Coletor:", lista_coletores, index=lista_coletores.index(st.session_state["filtro_coletor"]) if st.session_state["filtro_coletor"] in lista_coletores else 0)
+        
+        st.session_state["filtro_data_inicio"] = data_inicio
+        st.session_state["filtro_data_fim"] = data_fim
+        st.session_state["filtro_coletor"] = coletor_sel
 
-            if st.button("❌ Limpar Filtros", use_container_width=True):
-                st.session_state["filtro_data_inicio"] = primeiro_dia_mes
-                st.session_state["filtro_data_fim"] = data_hoje
-                st.session_state["filtro_coletor"] = "Todos"
-                st.rerun()
+        if st.button("❌ Limpar Filtros", use_container_width=True):
+            st.session_state["filtro_data_inicio"] = primeiro_dia_mes
+            st.session_state["filtro_data_fim"] = data_hoje
+            st.session_state["filtro_coletor"] = "Todos"
+            st.rerun()
             
-            if not df.empty:
-                df['data_dt'] = pd.to_datetime(df['data']).dt.date
-                df_filtrado = df[(df['data_dt'] >= data_inicio) & (df['data_dt'] <= data_fim)].copy()
-                if coletor_sel != "Todos":
-                    df_filtrado = df_filtrado[df_filtrado["coletor"] == coletor_sel]
-            else:
-                df_filtrado = df.copy()
-            
+        # Aplicação dos filtros para as coletas
+        if not df.empty:
+            df['data_dt'] = pd.to_datetime(df['data']).dt.date
+            df_filtrado = df[(df['data_dt'] >= data_inicio) & (df['data_dt'] <= data_fim)].copy()
+            if coletor_sel != "Todos":
+                df_filtrado = df_filtrado[df_filtrado["coletor"] == coletor_sel]
+        else:
+            df_filtrado = df.copy()
+
+        # Aplicação dos mesmos filtros para os vales
+        if not df_vales.empty:
+            df_vales['data_dt'] = pd.to_datetime(df_vales['data']).dt.date
+            vales_filtrados = df_vales[(df_vales['data_dt'] >= data_inicio) & (df_vales['data_dt'] <= data_fim)].copy()
+            if coletor_sel != "Todos":
+                vales_filtrados = vales_filtrados[vales_filtrados["coletor"] == coletor_sel]
+        else:
+            vales_filtrados = df_vales.copy()
+        
+        with sub_menu_adm[0]:
             st.subheader("📥 Coletas Pendentes no Período")
             pendentes = df_filtrado[df_filtrado["status"] == "Pendente"] if not df_filtrado.empty else pd.DataFrame()
             
@@ -201,28 +214,17 @@ else:
                     st.markdown("---")
             
             st.subheader("💵 Fechamento Financeiro")
-            try:
-                res_vales = supabase.table("vales_coleta").select("*").execute()
-                df_vales = pd.DataFrame(res_vales.data) if res_vales.data else pd.DataFrame(columns=["id", "data", "coletor", "valor_vale", "descricao"])
-            except Exception:
-                df_vales = pd.DataFrame(columns=["id", "data", "coletor", "valor_vale", "descricao"])
-                
-            if not df_vales.empty:
-                df_vales['data_dt'] = pd.to_datetime(df_vales['data']).dt.date
-                vales_filtrados = df_vales[(df_vales['data_dt'] >= data_inicio) & (df_vales['data_dt'] <= data_fim)]
-                if coletor_sel != "Todos":
-                    vales_filtrados = vales_filtrados[vales_filtrados["coletor"] == coletor_sel]
-                total_vales = vales_filtrados["valor_vale"].sum()
-            else:
-                total_vales = 0.0
+            total_vales = vales_filtrados["valor_vale"].sum() if not vales_filtrados.empty else 0.0
             
             aprovados_periodo = df_filtrado[df_filtrado["status"] == "Aprovado"] if not df_filtrado.empty else pd.DataFrame()
             if not aprovados_periodo.empty:
                 total_bruto = aprovados_periodo["valor_total"].sum()
-                total_nao_pago_adm = aprovados_periodo[aprovados_periodo["pago"] != True]["valor_total"].sum()
+                nao_pagas_lista = aprovados_periodo[aprovados_periodo["pago"] != True]
+                total_nao_pago_adm = nao_pagas_lista["valor_total"].sum()
             else:
                 total_bruto = 0.0
                 total_nao_pago_adm = 0.0
+                nao_pagas_lista = pd.DataFrame()
             
             total_liquido = max(0.0, float(total_nao_pago_adm) - float(total_vales))
             
@@ -230,6 +232,19 @@ else:
             cm1.metric("Bruto Aprovado", f"R$ {total_bruto:.2f}")
             cm2.metric("Desconto em Vales (-)", f"R$ {total_vales:.2f}")
             cm3.metric("Líquido a Pagar", f"R$ {total_liquido:.2f}")
+            
+            # --- NOVO REQUISITO: BOTÃO DE PAGAMENTO EM MASSA ---
+            if coletor_sel != "Todos" and not nao_pagas_lista.empty:
+                st.markdown(" ")
+                if st.button(f"💰 Marcar TODAS as Coletas de {coletor_sel} como Pagas", type="primary", use_container_width=True):
+                    with st.spinner(f"Processando pagamento em massa para {coletor_sel}..."):
+                        # Coleta os IDs de todas as coletas filtradas do período que estão pendentes de pagamento
+                        ids_para_pagar = nao_pagas_lista["id"].tolist()
+                        for cid in ids_para_pagar:
+                            supabase.table("coletas").update({"pago": True}).eq("id", cid).execute()
+                    st.success(f"✅ Sucesso! {len(ids_para_pagar)} coletas de {coletor_sel} foram marcadas como pagas.")
+                    time.sleep(0.5)
+                    st.rerun()
             
             st.markdown("#### Detalhes dos Aprovados")
             if aprovados_periodo.empty:
@@ -243,17 +258,15 @@ else:
                     with col_p1:
                         st.write(f"**{row['coletor']}** | R$ {float(row['valor_total']):.2f} | Data: {row['data']} ({status_pago_txt})")
                     with col_p2:
-                        with col_p2:
-                            if pago_atual != True:
-                                if st.button(f"Marcar como Pago", key=f"pag_{row['id']}"):
-                                    with st.spinner("Atualizando..."):  # <--- Corrigido para "st" minúsculo
-                                        supabase.table("coletas").update({"pago": True}).eq("id", row["id"]).execute()
-                                    st.rerun()
+                        if pago_atual != True:
+                            if st.button(f"Marcar como Pago", key=f"pag_{row['id']}"):
+                                with st.spinner("Atualizando..."):
+                                    supabase.table("coletas").update({"pago": True}).eq("id", row["id"]).execute()
+                                st.rerun()
                     st.markdown("---")
 
         with sub_menu_adm[1]:
             st.subheader("💰 Registrar Vale / Adiantamento")
-            res_users_data = listar_usuarios_cache()
             coletores_vales = [u["nome_completo"] for u in res_users_data if u.get("cargo") == "COLETOR"]
             
             if coletores_vales:
@@ -277,6 +290,22 @@ else:
                         st.error(f"⚠️ Erro ao salvar o vale no banco: {vale_err}")
             else:
                 st.info("Nenhum coletor cadastrado para receber vales.")
+                
+            # --- NOVO REQUISITO: TABELA DE VALES DO PERÍODO FILTRADO NO ADM ---
+            st.markdown("---")
+            st.subheader("📋 Histórico de Vales Emitidos")
+            if vales_filtrados.empty:
+                st.info("Nenhum vale encontrado para o período ou coletor selecionado.")
+            else:
+                st.metric("Total de Vales Listados", f"R$ {vales_filtrados['valor_vale'].sum():.2f}")
+                # Remove a coluna auxiliar de data para exibição limpa
+                if 'data_dt' in vales_filtrados.columns:
+                    vales_exibicao = vales_filtrados.drop(columns=['data_dt'])
+                else:
+                    vales_exibicao = vales_filtrados.copy()
+                
+                # Exibe de forma profissional e organizada as colunas relevantes
+                st.dataframe(vales_exibicao[["data", "coletor", "valor_vale", "descricao"]].sort_values(by="data", ascending=False), use_container_width=True)
 
         with sub_menu_adm[2]:
             st.subheader("👤 Cadastrar Novo Usuário")
@@ -413,7 +442,7 @@ else:
                                 if link_foto: st.image(link_foto, width=150)
 
         with menu[2]:
-            st.header("💸 Meus Adiantamentos (Vales)")
+            st.header("🔑 Meus Adiantamentos (Vales)")
             try:
                 res_vales_c2 = supabase.table("vales_coleta").select("*").eq("coletor", st.session_state['nome_completo_atual']).execute()
                 df_v = pd.DataFrame(res_vales_c2.data) if res_vales_c2.data else pd.DataFrame(columns=["data", "valor_vale", "descricao"])
