@@ -157,62 +157,74 @@ else:
         # ----------------- ABA 1: GESTÃO DE COLETAS -----------------
         with sub_menu_adm[0]:
             st.markdown("### 🔍 Filtros Gerais do Período")
+            
             col_f1, col_f2, col_f3 = st.columns(3)
             with col_f1:
-                data_inicio = st.date_input("Data Início:", value=st.session_state["filtro_data_inicio"], key="filtro_c_ini")
+                data_inicio = st.date_input("Data Início:", value=st.session_state["filtro_data_inicio"], key="input_data_ini")
             with col_f2:
-                data_fim = st.date_input("Data Fim:", value=st.session_state["filtro_data_fim"], key="filtro_c_fim")
+                data_fim = st.date_input("Data Fim:", value=st.session_state["filtro_data_fim"], key="input_data_fim")
             with col_f3:
-                coletor_sel = st.selectbox("Filtrar por Coletor:", lista_coletores, index=lista_coletores.index(st.session_state["filtro_coletor"]) if st.session_state["filtro_coletor"] in lista_coletores else 0, key="filtro_c_col")
+                idx_default = lista_coletores.index(st.session_state["filtro_coletor"]) if st.session_state["filtro_coletor"] in lista_coletores else 0
+                coletor_sel = st.selectbox("Filtrar por Coletor:", lista_coletores, index=idx_default, key="input_coletor_sel")
             
+            # Sincroniza escolhas manuais do usuário com o state interno de cálculo
             st.session_state["filtro_data_inicio"] = data_inicio
             st.session_state["filtro_data_fim"] = data_fim
             st.session_state["filtro_coletor"] = coletor_sel
 
+            # --- BOTÃO LIMPAR FILTROS DE COLETAS (AJUSTADO DE FORMA DEFINITIVA) ---
+            if st.button("❌ Limpar Filtros de Coletas", use_container_width=True):
+                # Zera as variáveis de cálculo
+                st.session_state["filtro_data_inicio"] = primeiro_dia_mes
+                st.session_state["filtro_data_fim"] = data_hoje
+                st.session_state["filtro_coletor"] = "Todos"
+                
+                # Força os seletores visuais da tela a resetarem no próximo ciclo
+                st.session_state["input_data_ini"] = primeiro_dia_mes
+                st.session_state["input_data_fim"] = data_hoje
+                st.session_state["input_coletor_sel"] = "Todos"
+                st.rerun()
+
+            st.markdown("---")
+
             # Filtragem dos dados de coletas baseada na aba
             if not df_bruto_coletas.empty:
                 df_bruto_coletas['data_dt'] = pd.to_datetime(df_bruto_coletas['data']).dt.date
-                df_filtrado = df_bruto_coletas[(df_bruto_coletas['data_dt'] >= data_inicio) & (df_bruto_coletas['data_dt'] <= data_fim)].copy()
-                if coletor_sel != "Todos":
-                    df_filtrado = df_filtrado[df_filtrado["coletor"] == coletor_sel]
+                df_filtrado = df_bruto_coletas[(df_bruto_coletas['data_dt'] >= st.session_state["filtro_data_inicio"]) & (df_bruto_coletas['data_dt'] <= st.session_state["filtro_data_fim"])].copy()
+                if st.session_state["filtro_coletor"] != "Todos":
+                    df_filtrado = df_filtrado[df_filtrado["coletor"] == st.session_state["filtro_coletor"]]
             else:
                 df_filtrado = df_bruto_coletas.copy()
 
             # Filtragem de vales paralela apenas para bater com a conta financeira do período
             if not df_bruto_vales.empty:
                 df_bruto_vales['data_dt'] = pd.to_datetime(df_bruto_vales['data']).dt.date
-                vales_financeiro = df_bruto_vales[(df_bruto_vales['data_dt'] >= data_inicio) & (df_bruto_vales['data_dt'] <= data_fim)].copy()
-                if coletor_sel != "Todos":
-                    vales_financeiro = vales_financeiro[vales_financeiro["coletor"] == coletor_sel]
+                vales_financeiro = df_bruto_vales[(df_bruto_vales['data_dt'] >= st.session_state["filtro_data_inicio"]) & (df_bruto_vales['data_dt'] <= st.session_state["filtro_data_fim"])].copy()
+                if st.session_state["filtro_coletor"] != "Todos":
+                    vales_financeiro = vales_financeiro[vales_financeiro["coletor"] == st.session_state["filtro_coletor"]]
             else:
                 vales_financeiro = df_bruto_vales.copy()
 
             aprovados_periodo = df_filtrado[df_filtrado["status"] == "Aprovado"] if not df_filtrado.empty else pd.DataFrame()
             nao_pagas_lista = aprovados_periodo[aprovados_periodo["pago"] != True] if not aprovados_periodo.empty else pd.DataFrame()
 
-            # --- FUNÇÃO 5: CONFIRMAÇÃO VISUAL (POP-UP / CHECKBOX DE SEGURANÇA) ---
-            if coletor_sel != "Todos" and not nao_pagas_lista.empty:
-                confirma_pagamento = st.checkbox(f"🔒 Desbloquear botão de pagamento em massa para {coletor_sel}", key="chk_confirma")
-                
-                if confirma_pagamento:
-                    if st.button(f"💰 Marcar TODAS as Coletas de {coletor_sel} como Pagas", type="primary", use_container_width=True):
-                        with st.spinner(f"Processando pagamento em massa para {coletor_sel}..."):
-                            ids_para_pagar = nao_pagas_lista["id"].tolist()
-                            for cid in ids_para_pagar:
-                                supabase.table("coletas").update({"pago": True}).eq("id", cid).execute()
-                        st.success(f"✅ Sucesso! {len(ids_para_pagar)} coletas de {coletor_sel} foram pagas.")
-                        time.sleep(0.5)
-                        st.rerun()
-                else:
-                    st.button(f"💰 Marcar TODAS as Coletas de {coletor_sel} como Pagas (Marque a caixa acima para liberar)", type="secondary", disabled=True, use_container_width=True)
-
-            if st.button("❌ Limpar Filtros de Coletas", use_container_width=True):
-                st.session_state["filtro_data_inicio"] = primeiro_dia_mes
-                st.session_state["filtro_data_fim"] = data_hoje
-                st.session_state["filtro_coletor"] = "Todos"
-                st.rerun()
-
-            st.markdown("---")
+            # --- USO DE CONTAINER ESTÁVEL PARA EVITAR O BUG 'REMOVECHILD' ---
+            container_botoes_massa = st.container()
+            with container_botoes_massa:
+                if st.session_state["filtro_coletor"] != "Todos" and not nao_pagas_lista.empty:
+                    confirma_pagamento = st.checkbox(f"🔒 Desbloquear botão de pagamento em massa para {st.session_state['filtro_coletor']}", key="chk_confirma")
+                    
+                    if confirma_pagamento:
+                        if st.button(f"💰 Marcar TODAS as Coletas de {st.session_state['filtro_coletor']} como Pagas", type="primary", use_container_width=True):
+                            with st.spinner(f"Processando pagamento em massa..."):
+                                ids_para_pagar = nao_pagas_lista["id"].tolist()
+                                for cid in ids_para_pagar:
+                                    supabase.table("coletas").update({"pago": True}).eq("id", cid).execute()
+                            st.success(f"✅ Sucesso! {len(ids_para_pagar)} coletas foram pagas.")
+                            time.sleep(0.4)
+                            st.rerun()
+                    else:
+                        st.button(f"💰 Marcar TODAS as Coletas de {st.session_state['filtro_coletor']} como Pagas (Marque a caixa acima)", type="secondary", disabled=True, use_container_width=True)
 
             st.subheader("📥 Coletas Pendentes no Período")
             pendentes = df_filtrado[df_filtrado["status"] == "Pendente"] if not df_filtrado.empty else pd.DataFrame()
@@ -248,22 +260,22 @@ else:
             cm2.metric("Desconto em Vales (-)", f"R$ {total_vales:.2f}")
             cm3.metric("Líquido a Pagar", f"R$ {total_liquido:.2f}")
             
-            # --- FUNÇÃO 6: RECIBO PRONTO PARA COMPARTILHAR NO WHATSAPP ---
-            if coletor_sel != "Todos":
-                texto_recibo = (
-                    f"*FECHAMENTO DE COLETAS*\n"
-                    f"*Coletor:* {coletor_sel}\n"
-                    f"*Período:* {data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')}\n"
-                    f"-----------------------------\n"
-                    f"💰 *Total Bruto Aprovado:* R$ {total_bruto:.2f}\n"
-                    f"📉 *Desconto em Vales:* R$ {total_vales:.2f}\n"
-                    f"💵 *Líquido à Pagar:* R$ {total_liquido:.2f}\n"
-                    f"-----------------------------\n"
-                    f"Gerado em: {datetime.now().strftime('%d/%m/%Y às %H:%M')}"
-                )
-                
-                # Botão para copiar texto formatado para o WhatsApp
-                st.text_area("📋 Texto do Recibo (Pronto para copiar)", value=texto_recibo, height=160)
+            # --- RECIBO DENTRO DE CONTAINER FIXO (EVITA QUEBRA) ---
+            container_recibo = st.container()
+            with container_recibo:
+                if st.session_state["filtro_coletor"] != "Todos":
+                    texto_recibo = (
+                        f"*FECHAMENTO DE COLETAS*\n"
+                        f"*Coletor:* {st.session_state['filtro_coletor']}\n"
+                        f"*Período:* {st.session_state['filtro_data_inicio'].strftime('%d/%m/%Y')} até {st.session_state['filtro_data_fim'].strftime('%d/%m/%Y')}\n"
+                        f"-----------------------------\n"
+                        f"💰 *Total Bruto Aprovado:* R$ {total_bruto:.2f}\n"
+                        f"📉 *Desconto em Vales:* R$ {total_vales:.2f}\n"
+                        f"💵 *Líquido à Pagar:* R$ {total_liquido:.2f}\n"
+                        f"-----------------------------\n"
+                        f"Gerado em: {datetime.now().strftime('%d/%m/%Y às %H:%M')}"
+                    )
+                    st.text_area("📋 Texto do Recibo (Pronto para copiar)", value=texto_recibo, height=160, key="txt_recibo_area")
             
             st.markdown("#### Detalhes dos Aprovados")
             if aprovados_periodo.empty:
@@ -383,19 +395,15 @@ else:
                 if quantidade and foto_comprovante:
                     try:
                         with st.spinner("Processando e compactando imagem..."):
-                            # --- FUNÇÃO 4: COMPACTAÇÃO AUTOMÁTICA DE IMAGEM ---
                             img = Image.open(foto_comprovante)
-                            # Se a imagem for muito gigante, redimensiona mantendo a proporção
                             img.thumbnail((1024, 1024))
                             
-                            # Salva em memória ram comprimindo como PNG otimizado ou JPEG leve
                             buffer_memoria = BytesIO()
                             img.save(buffer_memoria, format="JPEG", quality=75, optimize=True)
                             conteudo_foto = buffer_memoria.getvalue()
                             
                             nome_foto_nuvem = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{st.session_state['usuario_atual']}.jpg"
                             
-                            # Faz o upload do arquivo leve direto pro Supabase Storage
                             supabase.storage.from_("comprovantes").upload(
                                 path=nome_foto_nuvem, file=conteudo_foto,
                                 file_options={"content-type": "image/jpeg"}
