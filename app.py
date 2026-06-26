@@ -30,7 +30,7 @@ if "logado" not in st.session_state:
 if "reset_ctr" not in st.session_state:
     st.session_state["reset_ctr"] = 0
 
-# CORREÇÃO: Filtros padrão começando no dia 1 do mês atual para não sumir nada após o F5
+# Filtros padrão começando no dia 1 do mês atual para não sumir nada após o F5
 data_hoje = datetime.now().date()
 primeiro_dia_mes = data_hoje.replace(day=1)
 
@@ -122,29 +122,14 @@ else:
                 st.session_state["filtro_coletor"] = "Todos"
                 st.rerun()
             
-            # CORREÇÃO CRÍTICA: Filtragem à prova de falhas de tipo
+            # --- FILTRAGEM ÚNICA E CORRETA NO PANDAS ---
             if not df.empty:
-                # Transforma a coluna 'data' do banco em objetos do tipo datetime.date puro
                 df['data_dt'] = pd.to_datetime(df['data']).dt.date
-                
-                # Compara datetime.date (do dataframe) com datetime.date (dos inputs do Streamlit)
-                df_filtrado = df[(df['data_dt'] >= data_inicio) & (df['data_dt'] <= data_fim)]
+                df_filtrado = df[(df['data_dt'] >= data_inicio) & (df['data_dt'] <= data_fim)].copy()
                 if coletor_sel != "Todos":
                     df_filtrado = df_filtrado[df_filtrado["coletor"] == coletor_sel]
             else:
-                df_filtrado = df
-            
-            # --- FILTRAGEM DOS DADOS NO PANDAS (ADM) ---
-            if not df.empty:
-                # CORREÇÃO: Converte extraindo apenas a data pura (sem hora/fuso horário)
-                df['data_dt'] = pd.to_datetime(df['data']).dt.date
-                
-                # Realiza o filtro comparando 'date' com 'date' de forma idêntica
-                df_filtrado = df[(df['data_dt'] >= data_inicio) & (df['data_dt'] <= data_fim)]
-                if coletor_sel != "Todos":
-                    df_filtrado = df_filtrado[df_filtrado["coletor"] == coletor_sel]
-            else:
-                df_filtrado = df
+                df_filtrado = df.copy()
             
             # --- SEÇÃO DE APROVAÇÕES ---
             st.subheader("📥 Coletas Pendentes no Período")
@@ -156,7 +141,6 @@ else:
                 for index, row in pendentes.iterrows():
                     col1, col2 = st.columns([3, 2])
                     with col1:
-                        # CORREÇÃO: Mostra a data amigável formatada para evitar confusão
                         st.write(f"**Coletor:** {row['coletor']} | **Qtd:** {row['quantidade']} un | **Data:** {row['data']}")
                         link_foto = row.get('foto_url')
                         if link_foto: st.image(link_foto, width=150)
@@ -179,8 +163,8 @@ else:
                 df_vales = pd.DataFrame(columns=["id", "data", "coletor", "valor_vale", "descricao"])
                 
             if not df_vales.empty:
-                df_vales['data_dt'] = pd.to_datetime(df_vales['data'])
-                vales_filtrados = df_vales[(df_vales['data_dt'] >= pd.to_datetime(data_inicio)) & (df_vales['data_dt'] <= pd.to_datetime(data_fim))]
+                df_vales['data_dt'] = pd.to_datetime(df_vales['data']).dt.date
+                vales_filtrados = df_vales[(df_vales['data_dt'] >= data_inicio) & (df_vales['data_dt'] <= data_fim)]
                 if coletor_sel != "Todos":
                     vales_filtrados = vales_filtrados[vales_filtrados["coletor"] == coletor_sel]
                 total_vales = vales_filtrados["valor_vale"].sum()
@@ -191,7 +175,8 @@ else:
             
             if not aprovados_periodo.empty:
                 total_bruto = aprovados_periodo["valor_total"].sum()
-                total_nao_pago_adm = aprovados_periodo[aprovados_periodo["pago"] != "Sim"]["valor_total"].sum()
+                # Tratamento do booleano (False = Não Pago)
+                total_nao_pago_adm = aprovados_periodo[aprovados_periodo["pago"] != True]["valor_total"].sum()
             else:
                 total_bruto = 0.0
                 total_nao_pago_adm = 0.0
@@ -208,16 +193,16 @@ else:
                 st.info("Nenhuma coleta aprovada neste período.")
             else:
                 for index, row in aprovados_periodo.iterrows():
-                    pago_atual = row.get('pago', 'Não')
-                    status_pago_txt = "✅ Já Pago" if pago_atual == "Sim" else "❌ Não Pago"
+                    pago_atual = row.get('pago', False)
+                    status_pago_txt = "✅ Já Pago" if pago_atual == True else "❌ Não Pago"
                     
                     col_p1, col_p2 = st.columns([3, 2])
                     with col_p1:
                         st.write(f"**{row['coletor']}** | R$ {float(row['valor_total']):.2f} | Data: {row['data']} ({status_pago_txt})")
                     with col_p2:
-                        if pago_atual != "Sim":
+                        if pago_atual != True:
                             if st.button(f"Marcar como Pago", key=f"pag_{row['id']}"):
-                                supabase.table("coletas").update({"pago": "Sim"}).eq("id", row["id"]).execute()
+                                supabase.table("coletas").update({"pago": True}).eq("id", row["id"]).execute()
                                 st.rerun()
                     st.markdown("---")
 
@@ -239,12 +224,11 @@ else:
                 
                 if st.button("Lançar Vale", type="primary"):
                     try:
-                        # Forçando a conversão exata dos tipos aceitos pelo Supabase
                         novo_vale = {
-                            "data": str(data_vale),               # Garante texto da data AAAA-MM-DD
-                            "coletor": str(coletor_vale).strip(), # Texto limpo do coletor
-                            "valor_vale": float(valor_vale_input),# Força número decimal (numeric)
-                            "descricao": str(motivo_vale).strip() # Texto da descrição
+                            "data": str(data_vale),
+                            "coletor": str(coletor_vale).strip(),
+                            "valor_vale": float(valor_vale_input),
+                            "descricao": str(motivo_vale).strip()
                         }
                         
                         supabase.table("vales_coleta").insert(novo_vale).execute()
@@ -301,7 +285,6 @@ else:
                             nome_foto_nuvem = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{st.session_state['usuario_atual']}.png"
                             conteudo_foto = foto_comprovante.getvalue()
                             
-                            # Upload no Storage (Sua RLS SQL já corrigiu isso!)
                             supabase.storage.from_("comprovantes").upload(
                                 path=nome_foto_nuvem,
                                 file=conteudo_foto,
@@ -310,7 +293,6 @@ else:
                             
                             foto_url_final = supabase.storage.from_("comprovantes").get_public_url(nome_foto_nuvem)
                             
-                            # 100% Alinhado com as colunas originais (data, coletor, quantidade, foto_url...)
                             novo_registro = {
                                 "data": datetime.now().strftime("%Y-%m-%d"), 
                                 "coletor": st.session_state['nome_completo_atual'], 
@@ -318,13 +300,12 @@ else:
                                 "foto_url": foto_url_final, 
                                 "status": "Pendente", 
                                 "valor_total": round(float(quantidade * VALOR_POR_COLETA), 2),
-                                "pago": False
+                                "pago": False  # Mantido booleano para o banco de dados
                             }
                             
                             supabase.table("coletas").insert(novo_registro).execute()
                             st.success("✅ Envio realizado com sucesso!")
                             
-                            # Modifica o ID dos inputs para limpar a tela e reinicia
                             st.session_state["reset_ctr"] += 1
                             st.rerun()
                     except Exception as err:
@@ -355,8 +336,8 @@ else:
             if df.empty:
                 st.info("Nenhuma coleta encontrada.")
             else:
-                df['data_dt'] = pd.to_datetime(df['data'])
-                dados_coletor = df[(df['data_dt'] >= pd.to_datetime(c_data_ini)) & (df['data_dt'] <= pd.to_datetime(c_data_fim))]
+                df['data_dt'] = pd.to_datetime(df['data']).dt.date
+                dados_coletor = df[(df['data_dt'] >= c_data_ini) & (df['data_dt'] <= c_data_fim)]
                 
                 if dados_coletor.empty:
                     st.info("Nenhuma coleta encontrada para este período.")
@@ -370,13 +351,13 @@ else:
                         df_vales = pd.DataFrame(columns=["data", "valor_vale"])
                         
                     if not df_vales.empty:
-                        df_vales['data_dt'] = pd.to_datetime(df_vales['data'])
-                        vales_dele = df_vales[(df_vales['data_dt'] >= pd.to_datetime(c_data_ini)) & (df_vales['data_dt'] <= pd.to_datetime(c_data_fim))]["valor_vale"].sum()
+                        df_vales['data_dt'] = pd.to_datetime(df_vales['data']).dt.date
+                        vales_dele = df_vales[(df_vales['data_dt'] >= c_data_ini) & (df_vales['data_dt'] <= c_data_fim)]["valor_vale"].sum()
                     else:
                         vales_dele = 0.0
                     
-                    total_ja_pago = aprovadas[aprovadas["pago"] == "Sim"]["valor_total"].sum() if not aprovadas.empty else 0.0
-                    total_nao_pago = aprovadas[aprovadas["pago"] != "Sim"]["valor_total"].sum() if not aprovadas.empty else 0.0
+                    total_ja_pago = aprovadas[aprovadas["pago"] == True]["valor_total"].sum() if not aprovadas.empty else 0.0
+                    total_nao_pago = aprovadas[aprovadas["pago"] != True]["valor_total"].sum() if not aprovadas.empty else 0.0
                     
                     total_liquido_coletor = max(0.0, round(float(total_nao_pago) - float(vales_dele), 2))
                     
@@ -388,7 +369,7 @@ else:
                     st.markdown("### Envios do Período")
                     for idx, row in dados_coletor.iloc[::-1].iterrows():
                         status_cor = "🟢" if row['status'] == "Aprovado" else "🟡" if row['status'] == "Pendente" else "🔴"
-                        status_pago_txt = "💰 Pago" if row.get('pago') == "Sim" else "⏳ Pendente de Pgto"
+                        status_pago_txt = "💰 Pago" if row.get('pago') == True else "⏳ Pendente de Pgto"
                         
                         if row['status'] == "Recusado":
                             with st.expander(f"🔴 Data: {row['data']} | Qtd: {row['quantidade']} | REPROVADA"):
@@ -411,7 +392,6 @@ else:
             if df_v.empty:
                 st.info("Nenhum vale registrado.")
             else:
-                # CORREÇÃO: Garante a conversão correta para comparação de datas
                 df_v['data_dt'] = pd.to_datetime(df_v['data']).dt.date
                 vales_coletor = df_v[(df_v['data_dt'] >= st.session_state["c_filtro_inicio"]) & (df_v['data_dt'] <= st.session_state["c_filtro_fim"])]
                 
