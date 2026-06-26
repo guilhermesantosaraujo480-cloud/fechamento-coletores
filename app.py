@@ -93,18 +93,20 @@ else:
                 res_coletas = supabase.table("coletas").select("*").execute()
                 res_users = supabase.table("usuarios").select("*").execute()
                 
-                # Alinhado para garantir a leitura correta das fotos independente da variação do nome da coluna
-                df = pd.DataFrame(res_coletas.data) if res_coletas.data else pd.DataFrame(columns=["id", "data", "coletor", "quantidade", "foto_name", "status", "valor_total", "pago"])
-                if not df.empty and "foto_nome" in df.columns and "foto_name" not in df.columns:
-                    df = df.rename(columns={"foto_nome": "foto_name"})
-                elif not df.empty and "foto_name" in df.columns and "foto_nome" not in df.columns:
-                    df["foto_nome"] = df["foto_name"]
+                df = pd.DataFrame(res_coletas.data) if res_coletas.data else pd.DataFrame(columns=["id", "data", "coletor", "quantidade", "foto_nome", "status", "valor_total", "pago"])
+                
+                # Normalização inteligente caso existam variações de foto_nome / foto_name no banco
+                if not df.empty:
+                    if "foto_name" in df.columns and "foto_nome" not in df.columns:
+                        df["foto_nome"] = df["foto_name"]
+                    elif "foto_nome" in df.columns and "foto_name" not in df.columns:
+                        df["foto_name"] = df["foto_nome"]
 
                 df_users_list = pd.DataFrame(res_users.data) if res_users.data else pd.DataFrame(columns=["usuario", "senha", "nome_completo", "cargo"])
                 lista_coletores = ["Todos"] + df_users_list[df_users_list["cargo"] == "COLETOR"]["nome_completo"].tolist()
             except Exception as e:
                 st.error(f"Erro ao carregar dados do banco: {e}")
-                df = pd.DataFrame(columns=["id", "data", "coletor", "quantidade", "foto_name", "status", "valor_total", "pago"])
+                df = pd.DataFrame(columns=["id", "data", "coletor", "quantidade", "foto_nome", "status", "valor_total", "pago"])
                 lista_coletores = ["Todos"]
             
             st.subheader("🔍 Filtros de Busca")
@@ -144,7 +146,7 @@ else:
                     col1, col2 = st.columns([3, 2])
                     with col1:
                         st.write(f"**Coletor:** {row['coletor']} | **Qtd:** {row['quantidade']} un")
-                        link_foto = row.get('foto_name') or row.get('foto_nome')
+                        link_foto = row.get('foto_nome') or row.get('foto_name')
                         if link_foto: st.image(link_foto, width=150)
                     with col2:
                         if st.button(f"✓ Aprovar", key=f"ap_{row['id']}", type="primary"):
@@ -295,37 +297,40 @@ else:
                 
             if st.button("Enviar para Aprovação", type="primary", use_container_width=True):
                 if quantidade and foto_comprovante:
-                    with st.spinner("Enviando foto para o servidor..."):
-                        nome_foto_nuvem = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{st.session_state['usuario_atual']}.png"
-                        
-                        # CORRIGIDO: Agora lê os dados da variável correta 'foto_comprovante'
-                        conteudo_foto = foto_comprovante.getvalue()
-                        
-                        # Envia o arquivo para o bucket do Supabase
-                        supabase.storage.from_("comprovantes").upload(
-                            path=nome_foto_nuvem,
-                            file=conteudo_foto,
-                            file_options={"content-type": "image/png"}
-                        )
-                        
-                        foto_url_final = supabase.storage.from_("comprovantes").get_public_url(nome_foto_nuvem)
-                        
-                        novo_registro = {
-                            "data": datetime.now().strftime("%Y-%m-%d"),
-                            "coletor": st.session_state['nome_completo_atual'], 
-                            "quantidade": int(quantidade),
-                            "foto_name": foto_url_final,
-                            "status": "Pendente", 
-                            "valor_total": round(float(quantidade * VALOR_POR_COLETA), 2),
-                            "pago": "Não"
-                        }
-                        
-                        supabase.table("coletas").insert(novo_registro).execute()
-                        st.success("✅ Envio realizado com sucesso!")
-                        
-                        # Reseta os valores da tela sem mudar de aba ou deslogar
-                        st.session_state["reset_ctr"] += 1
-                        st.rerun()
+                    try:
+                        with St_spinner = st.spinner("Enviando foto para o servidor..."):
+                            nome_foto_nuvem = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{st.session_state['usuario_atual']}.png"
+                            conteudo_foto = foto_comprovante.getvalue()
+                            
+                            # Executa o upload com tratamento para exibir erros de RLS amigavelmente
+                            supabase.storage.from_("comprovantes").upload(
+                                path=nome_foto_nuvem,
+                                file=conteudo_foto,
+                                file_options={"content-type": "image/png"}
+                            )
+                            
+                            foto_url_final = supabase.storage.from_("comprovantes").get_public_url(nome_foto_nuvem)
+                            
+                            # Atualizado para alimentar as duas chaves de variação de coluna para segurança máxima
+                            novo_registro = {
+                                "data": datetime.now().strftime("%Y-%m-%d"),
+                                "coletor": st.session_state['nome_completo_atual'], 
+                                "quantidade": int(quantidade),
+                                "foto_name": foto_url_final,
+                                "foto_nome": foto_url_final,
+                                "status": "Pendente", 
+                                "valor_total": round(float(quantidade * VALOR_POR_COLETA), 2),
+                                "pago": "Não"
+                            }
+                            
+                            supabase.table("coletas").insert(novo_registro).execute()
+                            st.success("✅ Envio realizado com sucesso!")
+                            
+                            st.session_state["reset_ctr"] += 1
+                            st.rerun()
+                    except Exception as storage_err:
+                        st.error(f"⚠️ Erro de permissão no Storage: {storage_err}")
+                        st.info("Verifique se as Políticas RLS (Políticas de Inserção Pública) do bucket 'comprovantes' estão ativadas no painel do seu Supabase.")
                 else:
                     st.error("⚠️ Por favor, adicione a foto do comprovante antes de enviar.")
 
@@ -385,7 +390,6 @@ else:
                         total_ja_pago = 0.0
                         total_nao_pago = 0.0
                     
-                    # Mantida fielmente a sua estrutura anterior de cálculo para coletores
                     total_liquido_coletor = max(0.0, round(float(total_nao_pago) - float(vales_dele), 2))
                     
                     c1, c2, c3 = st.columns(3)
