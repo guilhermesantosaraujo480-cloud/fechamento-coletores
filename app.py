@@ -26,6 +26,10 @@ if "logado" not in st.session_state:
     st.session_state["nome_completo_atual"] = None
     st.session_state["cargo_atual"] = None
 
+# Contador para limpar campos de inputs de forma limpa
+if "reset_ctr" not in st.session_state:
+    st.session_state["reset_ctr"] = 0
+
 # Estados dos filtros do ADM
 if "filtro_data_inicio" not in st.session_state:
     st.session_state["filtro_data_inicio"] = datetime.now().date()
@@ -52,7 +56,7 @@ if not st.session_state["logado"]:
     
     if st.button("Entrar", type="primary", use_container_width=True):
         try:
-            # Busca usuários direto do banco de dados na nuvem
+            # Busca usuários direto do banco de dados na nuvem respeitando a coluna 'cargo'
             resposta = supabase.table("usuarios").select("*").eq("usuario", user_input).eq("senha", str(pass_input)).execute()
             user_valido = resposta.data
             
@@ -118,7 +122,6 @@ else:
                 st.rerun()
             
             if not df.empty:
-                # Filtragem dos dados por data e coletor
                 df['data_dt'] = pd.to_datetime(df['data'])
                 df_filtrado = df[(df['data_dt'] >= pd.to_datetime(data_inicio)) & (df['data_dt'] <= pd.to_datetime(data_fim))]
                 if coletor_sel != "Todos":
@@ -129,7 +132,7 @@ else:
             # --- SEÇÃO DE APROVAÇÕES (Apenas quem está Pendente) ---
             st.subheader("📥 Coletas Pendentes no Período")
             pendentes = df_filtrado[df_filtrado["status"] == "Pendente"] if not df_filtrado.empty else pd.DataFrame()
-            if  pendentes.empty:
+            if pendentes.empty:
                 st.info("Nenhuma coleta pendente encontrada.")
             else:
                 for index, row in pendentes.iterrows():
@@ -149,7 +152,6 @@ else:
             # --- SEÇÃO DE FECHAMENTO FINANCEIRO ---
             st.subheader("💵 Fechamento Financeiro")
             
-            # Puxar vales filtrando por data e coletor direto da nuvem
             try:
                 res_vales = supabase.table("vales_coleta").select("*").execute()
                 df_vales = pd.DataFrame(res_vales.data) if res_vales.data else pd.DataFrame(columns=["id", "data", "coletor", "valor_vale", "descricao"])
@@ -165,7 +167,6 @@ else:
             else:
                 total_vales = 0.0
             
-            # Separação estrita dos APROVADOS para a matemática
             aprovados_periodo = df_filtrado[df_filtrado["status"] == "Aprovado"] if not df_filtrado.empty else pd.DataFrame()
             
             if not aprovados_periodo.empty:
@@ -177,16 +178,13 @@ else:
                 total_ja_pago_adm = 0.0
                 total_nao_pago_adm = 0.0
             
-            # MATEMÁTICA CORRIGIDA: Líquido a Pagar = Total Aprovado Não Pago - Vales
             total_liquido = max(0.0, float(total_nao_pago_adm) - float(total_vales))
             
-            # Métricas em destaque
             cm1, cm2, cm3 = st.columns(3)
             cm1.metric("Bruto Aprovado", f"R$ {total_bruto:.2f}")
             cm2.metric("Desconto em Vales (-)", f"R$ {total_vales:.2f}")
             cm3.metric("Líquido a Pagar", f"R$ {total_liquido:.2f}")
             
-            # Detalhes e listagem
             st.markdown("#### Detalhes dos Aprovados")
             if aprovados_periodo.empty:
                 st.info("Nenhuma coleta aprovada neste período.")
@@ -205,7 +203,6 @@ else:
                                 st.rerun()
                     st.markdown("---")
 
-            # Exibe o histórico de RECUSADOS
             recusados_periodo = df_filtrado[df_filtrado["status"] == "Recusado"] if not df_filtrado.empty else pd.DataFrame()
             if not recusados_periodo.empty:
                 st.markdown("#### 📜 Histórico de Solicitações Recusadas")
@@ -223,20 +220,25 @@ else:
                 coletores_vales = []
             
             if coletores_vales:
-                coletor_vale = st.selectbox("Selecione o Coletor para o Vale:", coletores_vales)
-                valor_vale = st.number_input("Valor do Adiantamento (R$):", min_value=1.0, step=5.0)
-                data_vale = st.date_input("Data do Vale:", datetime.now())
-                motivo_vale = st.text_input("Observação/Motivo (Opcional):", value="Adiantamento de Coletas")
+                # Inputs conectados à chave do contador dinâmico para poder limpar após salvar
+                coletor_vale = st.selectbox("Selecione o Coletor para o Vale:", coletores_vales, key=f"sel_vale_{st.session_state['reset_ctr']}")
+                valor_vale_input = st.number_input("Valor do Adiantamento (R$):", min_value=1.0, step=5.0, value=10.0, key=f"val_vale_{st.session_state['reset_ctr']}")
+                data_vale = st.date_input("Data do Vale:", datetime.now(), key=f"dat_vale_{st.session_state['reset_ctr']}")
+                motivo_vale = st.text_input("Observação/Motivo (Opcional):", value="Adiantamento de Coletas", key=f"mot_vale_{st.session_state['reset_ctr']}")
                 
                 if st.button("Lançar Vale", type="primary"):
+                    # Estrutura tratada e corrigida de float para impedir o Postgrest APIError
                     novo_vale = {
                         "data": data_vale.strftime("%Y-%m-%d"),
-                        "coletor": coletor_vale,
-                        "valor_vale": float(valor_vale),
-                        "descricao": motivo_vale
+                        "coletor": str(coletor_vale),
+                        "valor_vale": round(float(valor_vale_input), 2),
+                        "descricao": str(motivo_vale)
                     }
                     supabase.table("vales_coleta").insert(novo_vale).execute()
-                    st.success(f"✅ Vale de R$ {valor_vale:.2f} registrado para {coletor_vale}!")
+                    st.success(f"✅ Vale de R$ {valor_vale_input:.2f} registrado para {coletor_vale}!")
+                    
+                    # Limpa os campos do formulário atualizando o contador
+                    st.session_state["reset_ctr"] += 1
                     st.rerun()
             else:
                 st.info("Nenhum coletor cadastrado para receber vales.")
@@ -254,10 +256,10 @@ else:
         # --- 3. CADASTRO DE USUÁRIOS ---
         with sub_menu_adm[2]:
             st.subheader("👤 Cadastrar Novo Usuário")
-            novo_nome = st.text_input("Nome Completo:")
-            novo_usuario = st.text_input("Login de Acesso:").strip().lower()
-            nova_senha = st.text_input("Senha:", type="password")
-            novo_perfil = st.selectbox("Tipo de Perfil:", ["COLETOR", "ADM"])
+            novo_nome = st.text_input("Nome Completo:", key=f"nn_{st.session_state['reset_ctr']}")
+            novo_usuario = st.text_input("Login de Acesso:", key=f"nu_{st.session_state['reset_ctr']}").strip().lower()
+            nova_senha = st.text_input("Senha:", type="password", key=f"ns_{st.session_state['reset_ctr']}")
+            novo_perfil = st.selectbox("Tipo de Perfil:", ["COLETOR", "ADM"], key=f"np_{st.session_state['reset_ctr']}")
             
             if st.button("Salvar Usuário", type="primary"):
                 if novo_nome and novo_usuario and nova_senha:
@@ -271,6 +273,7 @@ else:
                         }
                         supabase.table("usuarios").insert(novo_user_dict).execute()
                         st.success(f"🎉 {novo_nome} cadastrado como {novo_perfil}!")
+                        st.session_state["reset_ctr"] += 1
                         st.rerun()
 
     # =========================================================================
@@ -283,40 +286,46 @@ else:
         with menu[0]:
             st.header("Novo Envio")
             st.info(f"Registrando para: **{st.session_state['nome_completo_atual']}**")
-            quantidade = st.number_input("Quantidade de aparelhos:", min_value=1, step=1, value=1)
-            opcao_foto = st.radio("Foto:", ["Tirar Foto (Câmera)", "Carregar Arquivo (Galeria)"], label_visibility="collapsed")
-            foto = st.camera_input("Tirar foto") if opcao_foto == "Tirar Foto (Câmera)" else st.file_uploader("Arquivo", type=["jpg", "jpeg", "png"])
+            
+            # Inputs dinâmicos para sumirem e limparem após clicar em enviar
+            quantidade = st.number_input("Quantidade de aparelhos:", min_value=1, step=1, value=1, key=f"qtd_c_{st.session_state['reset_ctr']}")
+            
+            # Substituição perfeita: Apenas o File Uploader direto (faz foto e galeria nativos no celular)
+            foto_comprovante = st.file_uploader("Selecione ou tire a foto do comprovante:", type=["png", "jpg", "jpeg"], key=f"foto_c_{st.session_state['reset_ctr']}")
                 
             if st.button("Enviar para Aprovação", type="primary", use_container_width=True):
-                if quantidade and foto:
+                if quantidade and foto_comprovante:
                     with st.spinner("Enviando foto para o servidor..."):
-                        # Nome único da foto baseado no timestamp e usuário
                         nome_foto_nuvem = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{st.session_state['usuario_atual']}.png"
-                        conteudo_foto = foto.getvalue()
+                        conteudo_foto = foto_comprovante.getvalue()
                         
-                        # Upload para o Storage Bucket do Supabase
+                        # Envia o arquivo para o bucket do Supabase
                         supabase.storage.from_("comprovantes").upload(
                             path=nome_foto_nuvem,
                             file=conteudo_foto,
                             file_options={"content-type": "image/png"}
                         )
                         
-                        # Pega a URL pública final gerada
                         foto_url_final = supabase.storage.from_("comprovantes").get_public_url(nome_foto_nuvem)
                         
                         novo_registro = {
                             "data": datetime.now().strftime("%Y-%m-%d"),
                             "coletor": st.session_state['nome_completo_atual'], 
                             "quantidade": int(quantidade),
-                            "foto_name": foto_url_final, # Passa a URL da nuvem direto para a variável da estrutura
+                            "foto_name": foto_url_final,
                             "status": "Pendente", 
                             "valor_total": round(float(quantidade * VALOR_POR_COLETA), 2),
                             "pago": "Não"
                         }
                         
                         supabase.table("coletas").insert(novo_registro).execute()
-                        st.success("✅ Envio realizado!")
+                        st.success("✅ Envio realizado com sucesso!")
+                        
+                        # Incrementa o reset para limpar a quantidade e a foto enviada na tela do coletor
+                        st.session_state["reset_ctr"] += 1
                         st.rerun()
+                else:
+                    st.error("⚠️ Por favor, adicione a foto do comprovante antes de enviar.")
 
         # 2. HISTÓRICO DE COLETAS (COLETOR)
         with menu[1]:
@@ -352,7 +361,6 @@ else:
                 else:
                     aprovadas = dados_coletor[dados_coletor["status"] == "Aprovado"]
                     
-                    # Puxar vales dele do período direto do Supabase
                     try:
                         res_vales_c = supabase.table("vales_coleta").select("*").eq("coletor", st.session_state['nome_completo_atual']).execute()
                         df_vales = pd.DataFrame(res_vales_c.data) if res_vales_c.data else pd.DataFrame(columns=["data", "valor_vale"])
@@ -375,6 +383,7 @@ else:
                         total_ja_pago = 0.0
                         total_nao_pago = 0.0
                     
+                    # Mantida fielmente a sua estrutura anterior de cálculo para coletores
                     total_liquido_coletor = max(0.0, round(float(total_nao_pago) - float(vales_dele), 2))
                     
                     c1, c2, c3 = st.columns(3)
