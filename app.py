@@ -4,6 +4,8 @@ from datetime import datetime
 import time
 import uuid  # Gerador de tokens ultra-seguros
 from supabase import create_client, Client
+from io import BytesIO
+from PIL import Image  # Para a Função 4 (Compactação de fotos)
 
 # Configuração da página (otimizada para celular)
 st.set_page_config(page_title="Sistema Vivo Coletas", layout="centered", initial_sidebar_state="collapsed")
@@ -188,16 +190,21 @@ else:
             aprovados_periodo = df_filtrado[df_filtrado["status"] == "Aprovado"] if not df_filtrado.empty else pd.DataFrame()
             nao_pagas_lista = aprovados_periodo[aprovados_periodo["pago"] != True] if not aprovados_periodo.empty else pd.DataFrame()
 
-            # --- BOTÃO "MARCAR TUDO COMO PAGO" ACOPLADO EMBAIXO DOS FILTROS ---
+            # --- FUNÇÃO 5: CONFIRMAÇÃO VISUAL (POP-UP / CHECKBOX DE SEGURANÇA) ---
             if coletor_sel != "Todos" and not nao_pagas_lista.empty:
-                if st.button(f"💰 Marcar TODAS as Coletas de {coletor_sel} como Pagas", type="primary", use_container_width=True):
-                    with st.spinner(f"Processando pagamento em massa para {coletor_sel}..."):
-                        ids_para_pagar = nao_pagas_lista["id"].tolist()
-                        for cid in ids_para_pagar:
-                            supabase.table("coletas").update({"pago": True}).eq("id", cid).execute()
-                    st.success(f"✅ Sucesso! {len(ids_para_pagar)} coletas de {coletor_sel} foram pagas.")
-                    time.sleep(0.5)
-                    st.rerun()
+                confirma_pagamento = st.checkbox(f"🔒 Desbloquear botão de pagamento em massa para {coletor_sel}", key="chk_confirma")
+                
+                if confirma_pagamento:
+                    if st.button(f"💰 Marcar TODAS as Coletas de {coletor_sel} como Pagas", type="primary", use_container_width=True):
+                        with st.spinner(f"Processando pagamento em massa para {coletor_sel}..."):
+                            ids_para_pagar = nao_pagas_lista["id"].tolist()
+                            for cid in ids_para_pagar:
+                                supabase.table("coletas").update({"pago": True}).eq("id", cid).execute()
+                        st.success(f"✅ Sucesso! {len(ids_para_pagar)} coletas de {coletor_sel} foram pagas.")
+                        time.sleep(0.5)
+                        st.rerun()
+                else:
+                    st.button(f"💰 Marcar TODAS as Coletas de {coletor_sel} como Pagas (Marque a caixa acima para liberar)", type="secondary", disabled=True, use_container_width=True)
 
             if st.button("❌ Limpar Filtros de Coletas", use_container_width=True):
                 st.session_state["filtro_data_inicio"] = primeiro_dia_mes
@@ -240,6 +247,23 @@ else:
             cm1.metric("Bruto Aprovado", f"R$ {total_bruto:.2f}")
             cm2.metric("Desconto em Vales (-)", f"R$ {total_vales:.2f}")
             cm3.metric("Líquido a Pagar", f"R$ {total_liquido:.2f}")
+            
+            # --- FUNÇÃO 6: RECIBO PRONTO PARA COMPARTILHAR NO WHATSAPP ---
+            if coletor_sel != "Todos":
+                texto_recibo = (
+                    f"*FECHAMENTO DE COLETAS*\n"
+                    f"*Coletor:* {coletor_sel}\n"
+                    f"*Período:* {data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')}\n"
+                    f"-----------------------------\n"
+                    f"💰 *Total Bruto Aprovado:* R$ {total_bruto:.2f}\n"
+                    f"📉 *Desconto em Vales:* R$ {total_vales:.2f}\n"
+                    f"💵 *Líquido à Pagar:* R$ {total_liquido:.2f}\n"
+                    f"-----------------------------\n"
+                    f"Gerado em: {datetime.now().strftime('%d/%m/%Y às %H:%M')}"
+                )
+                
+                # Botão para copiar texto formatado para o WhatsApp
+                st.text_area("📋 Texto do Recibo (Pronto para copiar)", value=texto_recibo, height=160)
             
             st.markdown("#### Detalhes dos Aprovados")
             if aprovados_periodo.empty:
@@ -290,7 +314,6 @@ else:
             st.markdown("---")
             st.subheader("📋 Histórico de Vales Emitidos")
             
-            # --- NOVO FILTRO DE DATA EXCLUSIVO PARA O HISTÓRICO DE VALES ---
             st.markdown("#### 🔍 Filtrar Histórico de Vales")
             col_v1, col_v2 = st.columns(2)
             with col_v1:
@@ -301,7 +324,6 @@ else:
             st.session_state["v_adm_filtro_inicio"] = v_data_ini
             st.session_state["v_adm_filtro_fim"] = v_data_fim
             
-            # Filtragem dos vales baseada estritamente no filtro próprio desta aba
             if not df_bruto_vales.empty:
                 df_bruto_vales['data_dt'] = pd.to_datetime(df_bruto_vales['data']).dt.date
                 vales_filtrados_historico = df_bruto_vales[(df_bruto_vales['data_dt'] >= v_data_ini) & (df_bruto_vales['data_dt'] <= v_data_fim)].copy()
@@ -360,13 +382,23 @@ else:
             if st.button("Enviar para Aprovação", type="primary", use_container_width=True):
                 if quantidade and foto_comprovante:
                     try:
-                        with st.spinner("Enviando foto para o servidor..."):
-                            nome_foto_nuvem = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{st.session_state['usuario_atual']}.png"
-                            conteudo_foto = foto_comprovante.getvalue()
+                        with st.spinner("Processando e compactando imagem..."):
+                            # --- FUNÇÃO 4: COMPACTAÇÃO AUTOMÁTICA DE IMAGEM ---
+                            img = Image.open(foto_comprovante)
+                            # Se a imagem for muito gigante, redimensiona mantendo a proporção
+                            img.thumbnail((1024, 1024))
                             
+                            # Salva em memória ram comprimindo como PNG otimizado ou JPEG leve
+                            buffer_memoria = BytesIO()
+                            img.save(buffer_memoria, format="JPEG", quality=75, optimize=True)
+                            conteudo_foto = buffer_memoria.getvalue()
+                            
+                            nome_foto_nuvem = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{st.session_state['usuario_atual']}.jpg"
+                            
+                            # Faz o upload do arquivo leve direto pro Supabase Storage
                             supabase.storage.from_("comprovantes").upload(
                                 path=nome_foto_nuvem, file=conteudo_foto,
-                                file_options={"content-type": "image/png"}
+                                file_options={"content-type": "image/jpeg"}
                             )
                             
                             foto_url_final = supabase.storage.from_("comprovantes").get_public_url(nome_foto_nuvem)
