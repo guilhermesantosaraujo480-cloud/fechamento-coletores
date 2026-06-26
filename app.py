@@ -10,8 +10,8 @@ st.set_page_config(page_title="Sistema Vivo Coletas", layout="centered", initial
 VALOR_POR_COLETA = 10.0
 
 # ----------------- CONEXÃO COM O BANCO DE DADOS (SUPABASE) -----------------
-SUPABASE_URL = "https://jyymqbvgehhhlaanltlz.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp5eW1xYnZnZWhoaGxhYW5sdGx6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0MzU3NDIsImV4cCI6MjA5ODAxMTc0Mn0.Hk3U7Zk8YIls8C-W1hdzr6WfG2jnbz6pp2BjyPr0xd8"
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
 @st.cache_resource
 def init_supabase() -> Client:
@@ -310,7 +310,7 @@ else:
                             "quantidade": int(quantidade),
                             "foto_name": foto_url_final, # Passa a URL da nuvem direto para a variável da estrutura
                             "status": "Pendente", 
-                            "valor_total": float(quantidade * VALOR_POR_COLETA), 
+                            "valor_total": round(float(quantidade * VALOR_POR_COLETA), 2),
                             "pago": "Não"
                         }
                         
@@ -375,7 +375,7 @@ else:
                         total_ja_pago = 0.0
                         total_nao_pago = 0.0
                     
-                    total_liquido_coletor = max(0.0, float(total_nao_pago) - float(vales_dele))
+                    total_liquido_coletor = max(0.0, round(float(total_nao_pago) - float(vales_dele), 2))
                     
                     c1, c2, c3 = st.columns(3)
                     c1.metric("Líquido a Receber", f"R$ {total_liquido_coletor:.2f}")
