@@ -21,7 +21,16 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
-# ----------------- CORREÇÃO: INICIALIZAÇÃO PREVENTIVA DE TODO O STATE -----------------
+# ----------------- OTIMIZAÇÃO: CACHE PARA LISTAGEM DE USUÁRIOS -----------------
+@st.cache_data(ttl=600)  # Guarda a lista de usuários por 10 minutos para acelerar o app
+def listar_usuarios_cache():
+    try:
+        resposta = supabase.table("usuarios").select("*").execute()
+        return resposta.data if resposta.data else []
+    except Exception:
+        return []
+
+# ----------------- INICIALIZAÇÃO PREVENTIVA DE TODO O STATE -----------------
 if "logado" not in st.session_state:
     st.session_state["logado"] = False
     st.session_state["usuario_atual"] = None
@@ -34,7 +43,7 @@ if "reset_ctr" not in st.session_state:
 data_hoje = datetime.now().date()
 primeiro_dia_mes = data_hoje.replace(day=1)
 
-# Inicializa TODOS os filtros aqui em cima para NUNCA mais dar KeyError na troca de abas ou F5
+# Inicializa TODOS os filtros no topo para evitar qualquer risco de KeyError
 if "filtro_data_inicio" not in st.session_state:
     st.session_state["filtro_data_inicio"] = primeiro_dia_mes
 if "filtro_data_fim" not in st.session_state:
@@ -48,19 +57,18 @@ if "c_filtro_fim" not in st.session_state:
     st.session_state["c_filtro_fim"] = data_hoje
 
 
-# ----------------- COGNição/RECUPERAÇÃO DE SESSÃO VIA TOKEN -----------------
-# SE DEU F5: Verifica se o token existe na URL e tenta relogar
+# ----------------- RECUPERAÇÃO DE SESSÃO VIA TOKEN (RESISTENTE AO F5) -----------------
 if not st.session_state["logado"] and "session" in st.query_params:
     token_url = st.query_params["session"]
     try:
-        # Busca o usuário que possui EXATAMENTE esse token ativo
+        # Busca o usuário que possui EXATAMENTE esse token ativo no banco
         resposta = supabase.table("usuarios").select("*").eq("session_token", token_url).execute()
         if resposta.data:
             st.session_state["logado"] = True
             st.session_state["usuario_atual"] = resposta.data[0]["usuario"]
             st.session_state["nome_completo_atual"] = resposta.data[0]["nome_completo"]
             st.session_state["cargo_atual"] = resposta.data[0]["cargo"]
-    except Exception as e:
+    except Exception:
         pass 
 
 st.title("📱 Sistema de Coletas")
@@ -74,15 +82,14 @@ if not st.session_state["logado"]:
     
     if st.button("Entrar", type="primary", use_container_width=True):
         try:
-            # Busca ignorando espaços extras
             resposta = supabase.table("usuarios").select("*").eq("usuario", user_input).eq("senha", str(pass_input)).execute()
             user_valido = resposta.data
             
             if user_valido:
-                # 1. Gera um Token UUID completamente aleatório
+                # 1. Gera um Token UUID aleatório e seguro
                 novo_token = str(uuid.uuid4())
                 
-                # 2. CORREÇÃO: Atualiza usando o ID da linha para garantir que o banco grave
+                # 2. Grava o token no banco usando o ID numérico da linha
                 id_usuario = user_valido[0]["id"]
                 supabase.table("usuarios").update({"session_token": novo_token}).eq("id", id_usuario).execute()
                 
@@ -92,11 +99,11 @@ if not st.session_state["logado"]:
                 st.session_state["nome_completo_atual"] = user_valido[0]["nome_completo"]
                 st.session_state["cargo_atual"] = user_valido[0]["cargo"]
                 
-                # 4. Coloca o token na URL para aguentar o F5
+                # 4. Coloca o token de forma discreta na URL para aguentar o F5
                 st.query_params["session"] = novo_token
                 
                 st.success(f"Bem-vindo, {st.session_state['nome_completo_atual']}!")
-                time.sleep(0.3)
+                time.sleep(0.1)  # Tempo reduzido para resposta instantânea
                 st.rerun()
             else:
                 st.error("Usuário ou senha incorretos.")
@@ -110,7 +117,7 @@ else:
     
     if col_logout.button("Sair", use_container_width=True):
         try:
-            # Limpa o token no banco de dados para invalidar o link antigo
+            # Limpa o token no banco de dados para invalidar o link
             supabase.table("usuarios").update({"session_token": None}).eq("usuario", st.session_state["usuario_atual"]).execute()
         except Exception:
             pass
@@ -133,9 +140,10 @@ else:
         with sub_menu_adm[0]:
             try:
                 res_coletas = supabase.table("coletas").select("*").execute()
-                res_users = supabase.table("usuarios").select("*").execute()
+                # Usa a listagem otimizada com cache para poupar o banco
+                res_users_data = listar_usuarios_cache()
+                
                 df = pd.DataFrame(res_coletas.data) if res_coletas.data else pd.DataFrame(columns=["id", "data", "coletor", "quantidade", "foto_url", "status", "valor_total", "pago"])
-                res_users_data = res_users.data if res_users.data else []
                 lista_coletores = ["Todos"] + [u["nome_completo"] for u in res_users_data if u.get("cargo") == "COLETOR"]
             except Exception as e:
                 st.error(f"Erro ao carregar dados do banco: {e}")
@@ -183,10 +191,12 @@ else:
                         if link_foto: st.image(link_foto, width=150)
                     with col2:
                         if st.button(f"✓ Aprovar", key=f"ap_{row['id']}", type="primary"):
-                            supabase.table("coletas").update({"status": "Aprovado"}).eq("id", row["id"]).execute()
+                            with st.spinner("Aprovando..."):
+                                supabase.table("coletas").update({"status": "Aprovado"}).eq("id", row["id"]).execute()
                             st.rerun()
                         if st.button(f"✕ Recusar", key=f"rec_{row['id']}"):
-                            supabase.table("coletas").update({"status": "Recusado"}).eq("id", row["id"]).execute()
+                            with st.spinner("Recusando..."):
+                                supabase.table("coletas").update({"status": "Recusado"}).eq("id", row["id"]).execute()
                             st.rerun()
                     st.markdown("---")
             
@@ -235,18 +245,15 @@ else:
                     with col_p2:
                         if pago_atual != True:
                             if st.button(f"Marcar como Pago", key=f"pag_{row['id']}"):
-                                supabase.table("coletas").update({"pago": True}).eq("id", row["id"]).execute()
+                                with St.spinner("Atualizando..."):
+                                    supabase.table("coletas").update({"pago": True}).eq("id", row["id"]).execute()
                                 st.rerun()
                     st.markdown("---")
 
         with sub_menu_adm[1]:
             st.subheader("💰 Registrar Vale / Adiantamento")
-            try:
-                res_users = supabase.table("usuarios").select("*").execute()
-                res_users_data = res_users.data if res_users.data else []
-                coletores_vales = [u["nome_completo"] for u in res_users_data if u.get("cargo") == "COLETOR"]
-            except Exception:
-                coletores_vales = []
+            res_users_data = listar_usuarios_cache()
+            coletores_vales = [u["nome_completo"] for u in res_users_data if u.get("cargo") == "COLETOR"]
             
             if coletores_vales:
                 coletor_vale = st.selectbox("Selecione o Coletor para o Vale:", coletores_vales, key=f"sel_vale_{st.session_state['reset_ctr']}")
@@ -260,7 +267,8 @@ else:
                             "data": str(data_vale), "coletor": str(coletor_vale).strip(),
                             "valor_vale": float(valor_vale_input), "descricao": str(motivo_vale).strip()
                         }
-                        supabase.table("vales_coleta").insert(novo_vale).execute()
+                        with st.spinner("Salvando..."):
+                            supabase.table("vales_coleta").insert(novo_vale).execute()
                         st.success(f"✅ Vale de R$ {valor_vale_input:.2f} registrado para {coletor_vale}!")
                         st.session_state["reset_ctr"] += 1
                         st.rerun()
@@ -286,7 +294,10 @@ else:
                             "usuario": novo_usuario, "senha": str(nova_senha),
                             "nome_completo": novo_nome, "cargo": novo_perfil
                         }
-                        supabase.table("usuarios").insert(novo_user_dict).execute()
+                        with st.spinner("Cadastrando..."):
+                            supabase.table("usuarios").insert(novo_user_dict).execute()
+                        # Limpa o cache para o novo usuário aparecer imediatamente nos menus de filtro
+                        st.cache_data.clear()
                         st.success(f"🎉 {novo_nome} cadastrado como {novo_perfil}!")
                         st.session_state["reset_ctr"] += 1
                         st.rerun()
