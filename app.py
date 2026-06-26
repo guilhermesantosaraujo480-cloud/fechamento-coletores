@@ -2,9 +2,13 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from supabase import create_client, Client
+from streamlit_cookies_controller import CookieController
 
 # Configuração da página (otimizada para celular)
 st.set_page_config(page_title="Sistema Vivo Coletas", layout="centered", initial_sidebar_state="collapsed")
+
+# Inicializa o controlador de cookies
+controller = CookieController()
 
 # VALOR PADRÃO POR COLETA
 VALOR_POR_COLETA = 10.0
@@ -19,18 +23,27 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
-# ----------------- SESSÃO DE LOGIN E FILTROS -----------------
-if "logado" not in st.session_state:
-    st.session_state["logado"] = False
-    st.session_state["usuario_atual"] = None
-    st.session_state["nome_completo_atual"] = None
-    st.session_state["cargo_atual"] = None
+# ----------------- GERENCIAMENTO DE SESSÃO VIA COOKIES -----------------
+# Tenta recuperar o login salvo no navegador do usuário
+cookie_usuario = controller.get("vivo_coletas_user")
+cookie_nome = controller.get("vivo_coletas_nome")
+cookie_cargo = controller.get("vivo_coletas_cargo")
 
-# Contador para limpar campos de inputs de forma limpa
+if "logado" not in st.session_state:
+    if cookie_usuario and cookie_nome and cookie_cargo:
+        st.session_state["logado"] = True
+        st.session_state["usuario_atual"] = cookie_usuario
+        st.session_state["nome_completo_atual"] = cookie_nome
+        st.session_state["cargo_atual"] = cookie_cargo
+    else:
+        st.session_state["logado"] = False
+        st.session_state["usuario_atual"] = None
+        st.session_state["nome_completo_atual"] = None
+        st.session_state["cargo_atual"] = None
+
 if "reset_ctr" not in st.session_state:
     st.session_state["reset_ctr"] = 0
 
-# Filtros padrão começando no dia 1 do mês atual para não sumir nada após o F5
 data_hoje = datetime.now().date()
 primeiro_dia_mes = data_hoje.replace(day=1)
 
@@ -46,7 +59,6 @@ if "c_filtro_inicio" not in st.session_state:
 if "c_filtro_fim" not in st.session_state:
     st.session_state["c_filtro_fim"] = data_hoje
 
-# TÍTULO PRINCIPAL
 st.title("📱 Sistema de Coletas")
 st.markdown("---")
 
@@ -62,10 +74,17 @@ if not st.session_state["logado"]:
             user_valido = resposta.data
             
             if user_valido:
+                # Salva na Session State do Streamlit
                 st.session_state["logado"] = True
                 st.session_state["usuario_atual"] = user_input
                 st.session_state["nome_completo_atual"] = user_valido[0]["nome_completo"]
                 st.session_state["cargo_atual"] = user_valido[0]["cargo"]
+                
+                # Salva nos cookies do navegador para resistir ao F5 (Dura 30 dias)
+                controller.set("vivo_coletas_user", user_input)
+                controller.set("vivo_coletas_nome", user_valido[0]["nome_completo"])
+                controller.set("vivo_coletas_cargo", user_valido[0]["cargo"])
+                
                 st.success(f"Bem-vindo, {st.session_state['nome_completo_atual']}!")
                 st.rerun()
             else:
@@ -73,12 +92,22 @@ if not st.session_state["logado"]:
         except Exception as e:
             st.error(f"Erro ao conectar com o banco de dados: {e}")
 
-# ----------------- ÁREA DO SISTEMA (APÓS LOGIN) -----------------
+# ----------------- ÁREA DO SISTEMA (LOGADO) -----------------
 else:
     col_user, col_logout = st.columns([3, 1])
     col_user.write(f"👤 Conectado: **{st.session_state['nome_completo_atual']}** ({st.session_state['cargo_atual']})")
+    
     if col_logout.button("Sair", use_container_width=True):
+        # Limpa Session State
         st.session_state["logado"] = False
+        st.session_state["usuario_atual"] = None
+        st.session_state["nome_completo_atual"] = None
+        st.session_state["cargo_atual"] = None
+        
+        # Remove os cookies do navegador
+        controller.remove("vivo_coletas_user")
+        controller.remove("vivo_coletas_nome")
+        controller.remove("vivo_coletas_cargo")
         st.rerun()
 
     # =========================================================================
@@ -88,14 +117,11 @@ else:
         st.subheader("🛡️ Painel do Administrador")
         sub_menu_adm = st.tabs(["📋 Gestão de Coletas", "📉 Registrar/Ver Vales", "👤 Cadastrar Usuários"])
         
-        # --- 1. GESTÃO DE COLETAS E FILTROS ---
         with sub_menu_adm[0]:
             try:
                 res_coletas = supabase.table("coletas").select("*").execute()
                 res_users = supabase.table("usuarios").select("*").execute()
-                
                 df = pd.DataFrame(res_coletas.data) if res_coletas.data else pd.DataFrame(columns=["id", "data", "coletor", "quantidade", "foto_url", "status", "valor_total", "pago"])
-                
                 res_users_data = res_users.data if res_users.data else []
                 lista_coletores = ["Todos"] + [u["nome_completo"] for u in res_users_data if u.get("cargo") == "COLETOR"]
             except Exception as e:
@@ -122,7 +148,6 @@ else:
                 st.session_state["filtro_coletor"] = "Todos"
                 st.rerun()
             
-            # --- FILTRAGEM CORRETA ---
             if not df.empty:
                 df['data_dt'] = pd.to_datetime(df['data']).dt.date
                 df_filtrado = df[(df['data_dt'] >= data_inicio) & (df['data_dt'] <= data_fim)].copy()
@@ -131,7 +156,6 @@ else:
             else:
                 df_filtrado = df.copy()
             
-            # --- SEÇÃO DE APROVAÇÕES ---
             st.subheader("📥 Coletas Pendentes no Período")
             pendentes = df_filtrado[df_filtrado["status"] == "Pendente"] if not df_filtrado.empty else pd.DataFrame()
             
@@ -153,9 +177,7 @@ else:
                             st.rerun()
                     st.markdown("---")
             
-            # --- SEÇÃO DE FECHAMENTO FINANCEIRO ---
             st.subheader("💵 Fechamento Financeiro")
-            
             try:
                 res_vales = supabase.table("vales_coleta").select("*").execute()
                 df_vales = pd.DataFrame(res_vales.data) if res_vales.data else pd.DataFrame(columns=["id", "data", "coletor", "valor_vale", "descricao"])
@@ -172,7 +194,6 @@ else:
                 total_vales = 0.0
             
             aprovados_periodo = df_filtrado[df_filtrado["status"] == "Aprovado"] if not df_filtrado.empty else pd.DataFrame()
-            
             if not aprovados_periodo.empty:
                 total_bruto = aprovados_periodo["valor_total"].sum()
                 total_nao_pago_adm = aprovados_periodo[aprovados_periodo["pago"] != True]["valor_total"].sum()
@@ -205,7 +226,6 @@ else:
                                 st.rerun()
                     st.markdown("---")
 
-        # --- 2. ABA DE VALES (ADMIN) ---
         with sub_menu_adm[1]:
             st.subheader("💰 Registrar Vale / Adiantamento")
             try:
@@ -224,15 +244,11 @@ else:
                 if st.button("Lançar Vale", type="primary"):
                     try:
                         novo_vale = {
-                            "data": str(data_vale),
-                            "coletor": str(coletor_vale).strip(),
-                            "valor_vale": float(valor_vale_input),
-                            "descricao": str(motivo_vale).strip()
+                            "data": str(data_vale), "coletor": str(coletor_vale).strip(),
+                            "valor_vale": float(valor_vale_input), "descricao": str(motivo_vale).strip()
                         }
-                        
                         supabase.table("vales_coleta").insert(novo_vale).execute()
                         st.success(f"✅ Vale de R$ {valor_vale_input:.2f} registrado para {coletor_vale}!")
-                        
                         st.session_state["reset_ctr"] += 1
                         st.rerun()
                     except Exception as vale_err:
@@ -240,7 +256,6 @@ else:
             else:
                 st.info("Nenhum coletor cadastrado para receber vales.")
 
-        # --- 3. CADASTRO DE USUÁRIOS ---
         with sub_menu_adm[2]:
             st.subheader("👤 Cadastrar Novo Usuário")
             novo_nome = st.text_input("Nome Completo:", key=f"nn_{st.session_state['reset_ctr']}")
@@ -269,7 +284,6 @@ else:
     else:
         menu = st.tabs(["📲 Enviar Coleta", "📊 Minhas Coletas", "💰 Meus Vales"])
 
-        # 1. ENVIAR COLETA (RESTAURADO PARA O ORIGINAL QUE FUNCIONAVA)
         with menu[0]:
             st.header("Novo Envio")
             st.info(f"Registrando para: **{st.session_state['nome_completo_atual']}**")
@@ -285,14 +299,12 @@ else:
                             conteudo_foto = foto_comprovante.getvalue()
                             
                             supabase.storage.from_("comprovantes").upload(
-                                path=nome_foto_nuvem,
-                                file=conteudo_foto,
+                                path=nome_foto_nuvem, file=conteudo_foto,
                                 file_options={"content-type": "image/png"}
                             )
                             
                             foto_url_final = supabase.storage.from_("comprovantes").get_public_url(nome_foto_nuvem)
                             
-                            # RETORNADO EXACTAMENTE AO FORMATO ORIGINAL DO SEU ARQUIVO VALIDADO
                             novo_registro = {
                                 "data": datetime.now().strftime("%Y-%m-%d"), 
                                 "coletor": st.session_state['nome_completo_atual'], 
@@ -305,7 +317,6 @@ else:
                             
                             supabase.table("coletas").insert(novo_registro).execute()
                             st.success("✅ Envio realizado com sucesso!")
-                            
                             st.session_state["reset_ctr"] += 1
                             st.rerun()
                     except Exception as err:
@@ -313,10 +324,8 @@ else:
                 else:
                     st.error("⚠️ Por favor, adicione a foto do comprovante antes de enviar.")
 
-        # 2. HISTÓRICO DE COLETAS (COLETOR)
         with menu[1]:
             st.header("Meu Histórico")
-            
             st.markdown("#### 🔍 Filtrar Período")
             col_c1, col_c2 = st.columns(2)
             with col_c1:
@@ -343,7 +352,6 @@ else:
                     st.info("Nenhuma coleta encontrada para este período.")
                 else:
                     aprovadas = dados_coletor[dados_coletor["status"] == "Aprovado"]
-                    
                     try:
                         res_vales_c = supabase.table("vales_coleta").select("*").eq("coletor", st.session_state['nome_completo_atual']).execute()
                         df_vales = pd.DataFrame(res_vales_c.data) if res_vales_c.data else pd.DataFrame(columns=["data", "valor_vale"])
@@ -358,7 +366,6 @@ else:
                     
                     total_ja_pago = aprovadas[aprovadas["pago"] == True]["valor_total"].sum() if not aprovadas.empty else 0.0
                     total_nao_pago = aprovadas[aprovadas["pago"] != True]["valor_total"].sum() if not aprovadas.empty else 0.0
-                    
                     total_liquido_coletor = max(0.0, round(float(total_nao_pago) - float(vales_dele), 2))
                     
                     c1, c2, c3 = st.columns(3)
@@ -380,7 +387,6 @@ else:
                                 link_foto = row.get('foto_url')
                                 if link_foto: st.image(link_foto, width=150)
 
-        # 3. VISÃO DE VALES DO COLETOR
         with menu[2]:
             st.header("💸 Meus Adiantamentos (Vales)")
             try:
