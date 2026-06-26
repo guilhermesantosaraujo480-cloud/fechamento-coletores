@@ -1,6 +1,4 @@
-supabase
+streamlit
 pandas
-extra-streamlit-components
-uuid
-BytesIO
-PIL
+supabase
+Pillow
