@@ -213,7 +213,7 @@ else:
             
             if coletores_vales:
                 coletor_vale = st.selectbox("Selecione o Coletor para o Vale:", coletores_vales, key=f"sel_vale_{st.session_state['reset_ctr']}")
-                valor_vale_input = st.number_input("Valor do Adiantamento (R$):", min_value=1.0, step=5.0, value=0, key=f"val_vale_{st.session_state['reset_ctr']}")
+                valor_vale_input = st.number_input("Valor do Adiantamento (R$):", min_value=1.0, step=5.0, value=10.0, key=f"val_vale_{st.session_state['reset_ctr']}")
                 data_vale = st.date_input("Data do Vale:", datetime.now(), key=f"dat_vale_{st.session_state['reset_ctr']}")
                 motivo_vale = st.text_input("Observação/Motivo (Opcional):", value="Adiantamento de Coletas", key=f"mot_vale_{st.session_state['reset_ctr']}")
                 
