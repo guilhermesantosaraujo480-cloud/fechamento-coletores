@@ -256,7 +256,7 @@ else:
             cm3.metric("Desconto Vales (-)", f"R$ {total_vales:.2f}")
             cm4.metric("Líquido a Pagar", f"R$ {total_liquido:.2f}")
             
-            # --- RECIBO AJUSTADO COM O VALOR JÁ PAGO ADICIONADO ---
+            # --- RECIBO AJUSTADO COM CHAVE DINÂMICA (CORRIGE O CACHE AO MUDAR COLETOR) ---
             container_recibo = st.container()
             with container_recibo:
                 if coletor_sel != "Todos":
@@ -272,7 +272,9 @@ else:
                         f"-----------------------------\n"
                         f"Gerado em: {datetime.now().strftime('%d/%m/%Y às %H:%M')}"
                     )
-                    st.text_area("📋 Texto do Recibo (Pronto para copiar)", value=texto_recibo, height=180, key="txt_recibo_area")
+                    # A chave abaixo muda automaticamente sempre que o coletor ou datas mudarem, limpando o cache visual!
+                    chave_dinamica_recibo = f"txt_recibo_{coletor_sel}_{data_inicio}_{data_fim}"
+                    st.text_area("📋 Texto do Recibo (Pronto para copiar)", value=texto_recibo, height=180, key=chave_dinamica_recibo)
             
             st.markdown("#### Detalhes dos Aprovados")
             if aprovados_periodo.empty:
@@ -389,7 +391,7 @@ else:
             foto_comprovante = st.file_uploader("Selecione ou tire a foto do comprovante:", type=["png", "jpg", "jpeg"], key=f"foto_c_{st.session_state['reset_ctr']}")
                 
             if st.button("Enviar para Aprovação", type="primary", use_container_width=True):
-                if quantidade and foto_comprovante:
+                if quantity and foto_comprovante:
                     try:
                         with st.spinner("Processando e compactando imagem..."):
                             img = Image.open(foto_comprovante)
