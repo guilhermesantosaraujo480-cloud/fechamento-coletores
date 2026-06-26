@@ -117,10 +117,22 @@ else:
             st.session_state["filtro_coletor"] = coletor_sel
 
             if st.button("❌ Limpar Filtros", use_container_width=True):
-                st.session_state["filtro_data_inicio"] = datetime.now().date()
-                st.session_state["filtro_data_fim"] = datetime.now().date()
+                st.session_state["filtro_data_inicio"] = primeiro_dia_mes
+                st.session_state["filtro_data_fim"] = data_hoje
                 st.session_state["filtro_coletor"] = "Todos"
                 st.rerun()
+            
+            # CORREÇÃO CRÍTICA: Filtragem à prova de falhas de tipo
+            if not df.empty:
+                # Transforma a coluna 'data' do banco em objetos do tipo datetime.date puro
+                df['data_dt'] = pd.to_datetime(df['data']).dt.date
+                
+                # Compara datetime.date (do dataframe) com datetime.date (dos inputs do Streamlit)
+                df_filtrado = df[(df['data_dt'] >= data_inicio) & (df['data_dt'] <= data_fim)]
+                if coletor_sel != "Todos":
+                    df_filtrado = df_filtrado[df_filtrado["coletor"] == coletor_sel]
+            else:
+                df_filtrado = df
             
             # --- FILTRAGEM DOS DADOS NO PANDAS (ADM) ---
             if not df.empty:
