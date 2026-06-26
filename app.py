@@ -2,13 +2,17 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from supabase import create_client, Client
-from streamlit_cookies_controller import CookieController
+import extra_streamlit_components as stx
 
 # Configuração da página (otimizada para celular)
 st.set_page_config(page_title="Sistema Vivo Coletas", layout="centered", initial_sidebar_state="collapsed")
 
-# Inicializa o controlador de cookies que você tem instalado
-controller = CookieController()
+# Inicializa o gerenciador de cookies estável que roda na nuvem
+@st.cache_resource
+def get_cookie_manager():
+    return stx.CookieManager()
+
+cookie_manager = get_cookie_manager()
 
 # VALOR PADRÃO POR COLETA
 VALOR_POR_COLETA = 10.0
@@ -24,10 +28,10 @@ def init_supabase() -> Client:
 supabase = init_supabase()
 
 # ----------------- GERENCIAMENTO DE SESSÃO VIA COOKIES -----------------
-# Tenta recuperar o login salvo no navegador do usuário
-cookie_usuario = controller.get("vivo_coletas_user")
-cookie_nome = controller.get("vivo_coletas_nome")
-cookie_cargo = controller.get("vivo_coletas_cargo")
+# Recupera os dados salvos no navegador do usuário
+cookie_usuario = cookie_manager.get(cookie="vivo_coletas_user")
+cookie_nome = cookie_manager.get(cookie="vivo_coletas_nome")
+cookie_cargo = cookie_manager.get(cookie="vivo_coletas_cargo")
 
 if "logado" not in st.session_state:
     if cookie_usuario and cookie_nome and cookie_cargo:
@@ -74,16 +78,17 @@ if not st.session_state["logado"]:
             user_valido = resposta.data
             
             if user_valido:
-                # Salva na Session State do Streamlit
+                # Salva no Session State do Streamlit
                 st.session_state["logado"] = True
                 st.session_state["usuario_atual"] = user_input
                 st.session_state["nome_completo_atual"] = user_valido[0]["nome_completo"]
                 st.session_state["cargo_atual"] = user_valido[0]["cargo"]
                 
-                # Salva nos cookies do navegador para resistir ao F5
-                controller.set("vivo_coletas_user", user_input)
-                controller.set("vivo_coletas_nome", user_valido[0]["nome_completo"])
-                controller.set("vivo_coletas_cargo", user_valido[0]["cargo"])
+                # Salva nos cookies do navegador (Expira em 30 dias)
+                valido_ate = datetime.now() + pd.Timedelta(days=30)
+                cookie_manager.set("vivo_coletas_user", user_input, expires_at=valido_ate)
+                cookie_manager.set("vivo_coletas_nome", user_valido[0]["nome_completo"], expires_at=valido_ate)
+                cookie_manager.set("vivo_coletas_cargo", user_valido[0]["cargo"], expires_at=valido_ate)
                 
                 st.success(f"Bem-vindo, {st.session_state['nome_completo_atual']}!")
                 st.rerun()
@@ -105,9 +110,9 @@ else:
         st.session_state["cargo_atual"] = None
         
         # Remove os cookies do navegador
-        controller.remove("vivo_coletas_user")
-        controller.remove("vivo_coletas_nome")
-        controller.remove("vivo_coletas_cargo")
+        cookie_manager.delete("vivo_coletas_user")
+        cookie_manager.delete("vivo_coletas_nome")
+        cookie_manager.delete("vivo_coletas_cargo")
         st.rerun()
 
     # =========================================================================
@@ -399,7 +404,7 @@ else:
                 st.info("Nenhum vale registrado.")
             else:
                 df_v['data_dt'] = pd.to_datetime(df_v['data']).dt.date
-                vales_coletor = df_v[(df_v['data_dt'] >= st.session_state["c_filtro_inicio"]) & (df_v['data_dt'] <= st.session_state["c_filtro_fim"])]
+                vales_coletor = df_v[(df_v['vdata_dt'] >= st.session_state["c_filtro_inicio"]) & (df_v['data_dt'] <= st.session_state["c_filtro_fim"])]
                 
                 if vales_coletor.empty:
                     st.info("Nenhum vale registrado para o período selecionado.")
