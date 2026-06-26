@@ -122,7 +122,7 @@ else:
                 st.session_state["filtro_coletor"] = "Todos"
                 st.rerun()
             
-            # --- FILTRAGEM ÚNICA E CORRETA NO PANDAS ---
+            # --- FILTRAGEM ÚNICA (SEM REPETIÇÕES) ---
             if not df.empty:
                 df['data_dt'] = pd.to_datetime(df['data']).dt.date
                 df_filtrado = df[(df['data_dt'] >= data_inicio) & (df['data_dt'] <= data_fim)].copy()
@@ -175,8 +175,8 @@ else:
             
             if not aprovados_periodo.empty:
                 total_bruto = aprovados_periodo["valor_total"].sum()
-                # Tratamento do booleano (False = Não Pago)
-                total_nao_pago_adm = aprovados_periodo[aprovados_periodo["pago"] != True]["valor_total"].sum()
+                # Regra: Entra para o cálculo apenas se "pago" for estritamente False (A receber)
+                total_nao_pago_adm = aprovados_periodo[aprovados_periodo["pago"] == False]["valor_total"].sum()
             else:
                 total_bruto = 0.0
                 total_nao_pago_adm = 0.0
@@ -194,14 +194,15 @@ else:
             else:
                 for index, row in aprovados_periodo.iterrows():
                     pago_atual = row.get('pago', False)
-                    status_pago_txt = "✅ Já Pago" if pago_atual == True else "❌ Não Pago"
+                    status_pago_txt = "✅ Já Pago" if pago_atual is True else "❌ Não Pago"
                     
                     col_p1, col_p2 = st.columns([3, 2])
                     with col_p1:
                         st.write(f"**{row['coletor']}** | R$ {float(row['valor_total']):.2f} | Data: {row['data']} ({status_pago_txt})")
                     with col_p2:
-                        if pago_atual != True:
+                        if pago_atual is not True:
                             if st.button(f"Marcar como Pago", key=f"pag_{row['id']}"):
+                                # Muda linearmente de False para True no banco
                                 supabase.table("coletas").update({"pago": True}).eq("id", row["id"]).execute()
                                 st.rerun()
                     st.markdown("---")
@@ -293,6 +294,7 @@ else:
                             
                             foto_url_final = supabase.storage.from_("comprovantes").get_public_url(nome_foto_nuvem)
                             
+                            # Envia estritamente "False" booleano combinando com o tipo da coluna do banco
                             novo_registro = {
                                 "data": datetime.now().strftime("%Y-%m-%d"), 
                                 "coletor": st.session_state['nome_completo_atual'], 
@@ -300,7 +302,7 @@ else:
                                 "foto_url": foto_url_final, 
                                 "status": "Pendente", 
                                 "valor_total": round(float(quantidade * VALOR_POR_COLETA), 2),
-                                "pago": False  # Mantido booleano para o banco de dados
+                                "pago": False
                             }
                             
                             supabase.table("coletas").insert(novo_registro).execute()
@@ -356,8 +358,9 @@ else:
                     else:
                         vales_dele = 0.0
                     
+                    # Filtros puramente booleanos baseados na estrutura linear
                     total_ja_pago = aprovadas[aprovadas["pago"] == True]["valor_total"].sum() if not aprovadas.empty else 0.0
-                    total_nao_pago = aprovadas[aprovadas["pago"] != True]["valor_total"].sum() if not aprovadas.empty else 0.0
+                    total_nao_pago = aprovadas[aprovadas["pago"] == False]["valor_total"].sum() if not aprovadas.empty else 0.0
                     
                     total_liquido_coletor = max(0.0, round(float(total_nao_pago) - float(vales_dele), 2))
                     
