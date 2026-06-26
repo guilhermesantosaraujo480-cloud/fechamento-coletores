@@ -292,7 +292,7 @@ else:
                                 "foto_url": foto_url_final, 
                                 "status": "Pendente", 
                                 "valor_total": round(float(quantidade * VALOR_POR_COLETA), 2),
-                                "pago": "Não"
+                                "pago": False
                             }
                             
                             supabase.table("coletas").insert(novo_registro).execute()
