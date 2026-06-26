@@ -7,7 +7,7 @@ from streamlit_cookies_controller import CookieController
 # Configuração da página (otimizada para celular)
 st.set_page_config(page_title="Sistema Vivo Coletas", layout="centered", initial_sidebar_state="collapsed")
 
-# Inicializa o controlador de cookies
+# Inicializa o controlador de cookies que você tem instalado
 controller = CookieController()
 
 # VALOR PADRÃO POR COLETA
@@ -80,7 +80,7 @@ if not st.session_state["logado"]:
                 st.session_state["nome_completo_atual"] = user_valido[0]["nome_completo"]
                 st.session_state["cargo_atual"] = user_valido[0]["cargo"]
                 
-                # Salva nos cookies do navegador para resistir ao F5 (Dura 30 dias)
+                # Salva nos cookies do navegador para resistir ao F5
                 controller.set("vivo_coletas_user", user_input)
                 controller.set("vivo_coletas_nome", user_valido[0]["nome_completo"])
                 controller.set("vivo_coletas_cargo", user_valido[0]["cargo"])
