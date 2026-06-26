@@ -30,19 +30,21 @@ if "logado" not in st.session_state:
 if "reset_ctr" not in st.session_state:
     st.session_state["reset_ctr"] = 0
 
-# Estados dos filtros do ADM
+# CORREÇÃO: Filtros padrão começando no dia 1 do mês atual para não sumir nada após o F5
+data_hoje = datetime.now().date()
+primeiro_dia_mes = data_hoje.replace(day=1)
+
 if "filtro_data_inicio" not in st.session_state:
-    st.session_state["filtro_data_inicio"] = datetime.now().date()
+    st.session_state["filtro_data_inicio"] = primeiro_dia_mes
 if "filtro_data_fim" not in st.session_state:
-    st.session_state["filtro_data_fim"] = datetime.now().date()
+    st.session_state["filtro_data_fim"] = data_hoje
 if "filtro_coletor" not in st.session_state:
     st.session_state["filtro_coletor"] = "Todos"
 
-# Estados dos filtros do COLETOR
 if "c_filtro_inicio" not in st.session_state:
-    st.session_state["c_filtro_inicio"] = datetime.now().date()
+    st.session_state["c_filtro_inicio"] = primeiro_dia_mes
 if "c_filtro_fim" not in st.session_state:
-    st.session_state["c_filtro_fim"] = datetime.now().date()
+    st.session_state["c_filtro_fim"] = data_hoje
 
 # TÍTULO PRINCIPAL
 st.title("📱 Sistema de Coletas")
@@ -120,9 +122,13 @@ else:
                 st.session_state["filtro_coletor"] = "Todos"
                 st.rerun()
             
+            # --- FILTRAGEM DOS DADOS NO PANDAS (ADM) ---
             if not df.empty:
-                df['data_dt'] = pd.to_datetime(df['data'])
-                df_filtrado = df[(df['data_dt'] >= pd.to_datetime(data_inicio)) & (df['data_dt'] <= pd.to_datetime(data_fim))]
+                # CORREÇÃO: Converte extraindo apenas a data pura (sem hora/fuso horário)
+                df['data_dt'] = pd.to_datetime(df['data']).dt.date
+                
+                # Realiza o filtro comparando 'date' com 'date' de forma idêntica
+                df_filtrado = df[(df['data_dt'] >= data_inicio) & (df['data_dt'] <= data_fim)]
                 if coletor_sel != "Todos":
                     df_filtrado = df_filtrado[df_filtrado["coletor"] == coletor_sel]
             else:
@@ -131,13 +137,15 @@ else:
             # --- SEÇÃO DE APROVAÇÕES ---
             st.subheader("📥 Coletas Pendentes no Período")
             pendentes = df_filtrado[df_filtrado["status"] == "Pendente"] if not df_filtrado.empty else pd.DataFrame()
+            
             if pendentes.empty:
                 st.info("Nenhuma coleta pendente encontrada.")
             else:
                 for index, row in pendentes.iterrows():
                     col1, col2 = st.columns([3, 2])
                     with col1:
-                        st.write(f"**Coletor:** {row['coletor']} | **Qtd:** {row['quantidade']} un")
+                        # CORREÇÃO: Mostra a data amigável formatada para evitar confusão
+                        st.write(f"**Coletor:** {row['coletor']} | **Qtd:** {row['quantidade']} un | **Data:** {row['data']}")
                         link_foto = row.get('foto_url')
                         if link_foto: st.image(link_foto, width=150)
                     with col2:
@@ -391,8 +399,9 @@ else:
             if df_v.empty:
                 st.info("Nenhum vale registrado.")
             else:
-                df_v['data_dt'] = pd.to_datetime(df_v['data'])
-                vales_coletor = df_v[(df_v['data_dt'] >= pd.to_datetime(st.session_state["c_filtro_inicio"])) & (df_v['data_dt'] <= pd.to_datetime(st.session_state["c_filtro_fim"]))]
+                # CORREÇÃO: Garante a conversão correta para comparação de datas
+                df_v['data_dt'] = pd.to_datetime(df_v['data']).dt.date
+                vales_coletor = df_v[(df_v['data_dt'] >= st.session_state["c_filtro_inicio"]) & (df_v['data_dt'] <= st.session_state["c_filtro_fim"])]
                 
                 if vales_coletor.empty:
                     st.info("Nenhum vale registrado para o período selecionado.")
