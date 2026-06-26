@@ -298,7 +298,7 @@ else:
             if st.button("Enviar para Aprovação", type="primary", use_container_width=True):
                 if quantidade and foto_comprovante:
                     try:
-                        with St_spinner = st.spinner("Enviando foto para o servidor..."):
+                        with st.spinner("Enviando foto para o servidor..."):
                             nome_foto_nuvem = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{st.session_state['usuario_atual']}.png"
                             conteudo_foto = foto_comprovante.getvalue()
                             
