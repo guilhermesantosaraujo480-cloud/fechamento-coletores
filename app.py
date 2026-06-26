@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import time
+import uuid  # Biblioteca nativa para gerar tokens aleatórios ultra-seguros
 from supabase import create_client, Client
 
 # Configuração da página (otimizada para celular)
@@ -20,29 +21,26 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
-# ----------------- GERENCIAMENTO DE SESSÃO SEGURO (SEM URL EXPOSTA) -----------------
+# ----------------- GERENCIAMENTO DE SESSÃO COM TOKEN DE BANCO -----------------
 if "logado" not in st.session_state:
     st.session_state["logado"] = False
     st.session_state["usuario_atual"] = None
     st.session_state["nome_completo_atual"] = None
     st.session_state["cargo_atual"] = None
 
-# Remove qualquer resquício de parâmetro da URL para ninguém tentar burlar
-if "u" in st.query_params:
-    st.query_params.clear()
-
-# SEGUNDA CAMADA DE SEGURANÇA: Se der F5, reconecta direto pela URL de forma nativa
-if not st.session_state["logado"] and "u" in st.query_params:
-    user_url = st.query_params["u"]
+# SE DEU F5: Verifica se o token da URL bate com o token salvo no banco de dados
+if not st.session_state["logado"] and "session" in st.query_params:
+    token_url = st.query_params["session"]
     try:
-        resposta = supabase.table("usuarios").select("*").eq("usuario", user_url).execute()
+        # Busca o usuário que possui EXATAMENTE esse token ativo
+        resposta = supabase.table("usuarios").select("*").eq("session_token", token_url).execute()
         if resposta.data:
             st.session_state["logado"] = True
-            st.session_state["usuario_atual"] = user_url
+            st.session_state["usuario_atual"] = resposta.data[0]["usuario"]
             st.session_state["nome_completo_atual"] = resposta.data[0]["nome_completo"]
             st.session_state["cargo_atual"] = resposta.data[0]["cargo"]
     except Exception:
-        pass # Ignora silenciosamente se houver erro de rede no F5 inicial
+        pass # Ignora silenciosamente erros temporários de conexão no F5
 
 if "reset_ctr" not in st.session_state:
     st.session_state["reset_ctr"] = 0
@@ -50,17 +48,7 @@ if "reset_ctr" not in st.session_state:
 data_hoje = datetime.now().date()
 primeiro_dia_mes = data_hoje.replace(day=1)
 
-if "filtro_data_inicio" not in st.session_state:
-    st.session_state["filtro_data_inicio"] = primeiro_dia_mes
-if "filtro_data_fim" not in st.session_state:
-    st.session_state["filtro_data_fim"] = data_hoje
-if "filtro_coletor" not in st.session_state:
-    st.session_state["filtro_coletor"] = "Todos"
-
-if "c_filtro_inicio" not in st.session_state:
-    st.session_state["c_filtro_inicio"] = primeiro_dia_mes
-if "c_filtro_fim" not in st.session_state:
-    st.session_state["c_filtro_fim"] = data_hoje
+# ... (Mantenha as inicializações de filtros iguais ao seu código atual) ...
 
 st.title("📱 Sistema de Coletas")
 st.markdown("---")
@@ -77,11 +65,20 @@ if not st.session_state["logado"]:
             user_valido = resposta.data
             
             if user_valido:
-                # Salva APENAS na memória interna e segura do servidor (Session State)
+                # 1. Gera um Token UUID completamente aleatório (ex: 4a2f8b31-...)
+                novo_token = str(uuid.uuid4())
+                
+                # 2. Salva o token na tabela do usuário no Supabase
+                supabase.table("usuarios").update({"session_token": novo_token}).eq("usuario", user_input).execute()
+                
+                # 3. Guarda na memória do Streamlit
                 st.session_state["logado"] = True
                 st.session_state["usuario_atual"] = user_input
                 st.session_state["nome_completo_atual"] = user_valido[0]["nome_completo"]
                 st.session_state["cargo_atual"] = user_valido[0]["cargo"]
+                
+                # 4. Coloca o token na URL de forma discreta para aguentar o F5
+                st.query_params["session"] = novo_token
                 
                 st.success(f"Bem-vindo, {st.session_state['nome_completo_atual']}!")
                 time.sleep(0.3)
@@ -97,16 +94,21 @@ else:
     col_user.write(f"👤 Conectado: **{st.session_state['nome_completo_atual']}** ({st.session_state['cargo_atual']})")
     
     if col_logout.button("Sair", use_container_width=True):
-        # Limpa os parâmetros da URL nativa
+        try:
+            # Segurança máxima: Apaga o token do banco de dados para invalidar a sessão
+            supabase.table("usuarios").update({"session_token": None}).eq("usuario", st.session_state["usuario_atual"]).execute()
+        except Exception:
+            pass
+            
+        # Limpa tudo localmente
         st.query_params.clear()
-        
-        # Limpa Session State
         st.session_state["logado"] = False
         st.session_state["usuario_atual"] = None
         st.session_state["nome_completo_atual"] = None
         st.session_state["cargo_atual"] = None
-        
         st.rerun()
+
+    # ... (O resto do seu código de ADM e COLETOR continua exatamente igual lá para baixo) ...
 
     # =========================================================================
     # PERFIL ADMINISTRADOR
