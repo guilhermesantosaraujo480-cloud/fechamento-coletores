@@ -43,7 +43,7 @@ if "reset_ctr" not in st.session_state:
 data_hoje = datetime.now().date()
 primeiro_dia_mes = data_hoje.replace(day=1)
 
-# Inicializa TODOS os filtros no topo para evitar qualquer risco de KeyError
+# Estados persistentes dos filtros da aba de Coletas
 if "filtro_data_inicio" not in st.session_state:
     st.session_state["filtro_data_inicio"] = primeiro_dia_mes
 if "filtro_data_fim" not in st.session_state:
@@ -51,6 +51,13 @@ if "filtro_data_fim" not in st.session_state:
 if "filtro_coletor" not in st.session_state:
     st.session_state["filtro_coletor"] = "Todos"
 
+# Estados persistentes dos filtros da aba de Vales (ADMIN)
+if "v_adm_filtro_inicio" not in st.session_state:
+    st.session_state["v_adm_filtro_inicio"] = primeiro_dia_mes
+if "v_adm_filtro_fim" not in st.session_state:
+    st.session_state["v_adm_filtro_fim"] = data_hoje
+
+# Estados dos filtros do Coletor
 if "c_filtro_inicio" not in st.session_state:
     st.session_state["c_filtro_inicio"] = primeiro_dia_mes
 if "c_filtro_fim" not in st.session_state:
@@ -61,7 +68,6 @@ if "c_filtro_fim" not in st.session_state:
 if not st.session_state["logado"] and "session" in st.query_params:
     token_url = st.query_params["session"]
     try:
-        # Busca o usuário que possui EXATAMENTE esse token ativo no banco
         resposta = supabase.table("usuarios").select("*").eq("session_token", token_url).execute()
         if resposta.data:
             st.session_state["logado"] = True
@@ -86,20 +92,14 @@ if not st.session_state["logado"]:
             user_valido = resposta.data
             
             if user_valido:
-                # 1. Gera um Token UUID aleatório e seguro
                 novo_token = str(uuid.uuid4())
-                
-                # 2. Grava o token no banco usando o ID numérico da linha
                 id_usuario = user_valido[0]["id"]
                 supabase.table("usuarios").update({"session_token": novo_token}).eq("id", id_usuario).execute()
                 
-                # 3. Guarda na memória interna do Streamlit
                 st.session_state["logado"] = True
                 st.session_state["usuario_atual"] = user_input
                 st.session_state["nome_completo_atual"] = user_valido[0]["nome_completo"]
                 st.session_state["cargo_atual"] = user_valido[0]["cargo"]
-                
-                # 4. Coloca o token de forma discreta na URL para aguentar o F5
                 st.query_params["session"] = novo_token
                 
                 st.success(f"Bem-vindo, {st.session_state['nome_completo_atual']}!")
@@ -117,12 +117,10 @@ else:
     
     if col_logout.button("Sair", use_container_width=True):
         try:
-            # Limpa o token no banco de dados para invalidar o link
             supabase.table("usuarios").update({"session_token": None}).eq("usuario", st.session_state["usuario_atual"]).execute()
         except Exception:
             pass
             
-        # Limpa tudo localmente
         st.query_params.clear()
         st.session_state["logado"] = False
         st.session_state["usuario_atual"] = None
@@ -136,70 +134,61 @@ else:
     if st.session_state["cargo_atual"] == "ADM":
         st.subheader("🛡️ Painel do Administrador")
         
-        # Pré-carregamento global dos dados para cruzar informações nas abas
+        # Carregamento global bruto dos dados
         try:
             res_coletas = supabase.table("coletas").select("*").execute()
             res_vales = supabase.table("vales_coleta").select("*").execute()
             res_users_data = listar_usuarios_cache()
             
-            df = pd.DataFrame(res_coletas.data) if res_coletas.data else pd.DataFrame(columns=["id", "data", "coletor", "quantidade", "foto_url", "status", "valor_total", "pago"])
-            df_vales = pd.DataFrame(res_vales.data) if res_vales.data else pd.DataFrame(columns=["id", "data", "coletor", "valor_vale", "descricao"])
+            df_bruto_coletas = pd.DataFrame(res_coletas.data) if res_coletas.data else pd.DataFrame(columns=["id", "data", "coletor", "quantidade", "foto_url", "status", "valor_total", "pago"])
+            df_bruto_vales = pd.DataFrame(res_vales.data) if res_vales.data else pd.DataFrame(columns=["id", "data", "coletor", "valor_vale", "descricao"])
             lista_coletores = ["Todos"] + [u["nome_completo"] for u in res_users_data if u.get("cargo") == "COLETOR"]
         except Exception as e:
             st.error(f"Erro ao carregar dados do banco: {e}")
-            df = pd.DataFrame(columns=["id", "data", "coletor", "quantidade", "foto_url", "status", "valor_total", "pago"])
-            df_vales = pd.DataFrame(columns=["id", "data", "coletor", "valor_vale", "descricao"])
+            df_bruto_coletas = pd.DataFrame(columns=["id", "data", "coletor", "quantidade", "foto_url", "status", "valor_total", "pago"])
+            df_bruto_vales = pd.DataFrame(columns=["id", "data", "coletor", "valor_vale", "descricao"])
             lista_coletores = ["Todos"]
 
-        # Filtros no topo absoluto do painel ADM
-        st.subheader("🔍 Filtros Gerais do Período")
-        col_f1, col_f2, col_f3 = st.columns(3)
-        with col_f1:
-            data_inicio = st.date_input("Data Início:", value=st.session_state["filtro_data_inicio"])
-        with col_f2:
-            data_fim = st.date_input("Data Fim:", value=st.session_state["filtro_data_fim"])
-        with col_f3:
-            coletor_sel = st.selectbox("Filtrar por Coletor:", lista_coletores, index=lista_coletores.index(st.session_state["filtro_coletor"]) if st.session_state["filtro_coletor"] in lista_coletores else 0)
-        
-        st.session_state["filtro_data_inicio"] = data_inicio
-        st.session_state["filtro_data_fim"] = data_fim
-        st.session_state["filtro_coletor"] = coletor_sel
-
-        if st.button("❌ Limpar Filtros", use_container_width=True):
-            st.session_state["filtro_data_inicio"] = primeiro_dia_mes
-            st.session_state["filtro_data_fim"] = data_hoje
-            st.session_state["filtro_coletor"] = "Todos"
-            st.rerun()
-
-        # Aplicação lógica dos filtros para coletas
-        if not df.empty:
-            df['data_dt'] = pd.to_datetime(df['data']).dt.date
-            df_filtrado = df[(df['data_dt'] >= data_inicio) & (df['data_dt'] <= data_fim)].copy()
-            if coletor_sel != "Todos":
-                df_filtrado = df_filtrado[df_filtrado["coletor"] == coletor_sel]
-        else:
-            df_filtrado = df.copy()
-
-        # Aplicação lógica dos filtros para vales
-        if not df_vales.empty:
-            df_vales['data_dt'] = pd.to_datetime(df_vales['data']).dt.date
-            vales_filtrados = df_vales[(df_vales['data_dt'] >= data_inicio) & (df_vales['data_dt'] <= data_fim)].copy()
-            if coletor_sel != "Todos":
-                vales_filtrados = vales_filtrados[vales_filtrados["coletor"] == coletor_sel]
-        else:
-            vales_filtrados = df_vales.copy()
-
-        # Descobre adiantado se há algo pendente de pagamento para alimentar o botão de massa
-        aprovados_periodo = df_filtrado[df_filtrado["status"] == "Aprovado"] if not df_filtrado.empty else pd.DataFrame()
-        nao_pagas_lista = aprovados_periodo[aprovados_periodo["pago"] != True] if not aprovados_periodo.empty else pd.DataFrame()
-
-        st.markdown("---")
-
-        # Divisão das abas administrativas
+        # Abas de Navegação do ADM
         sub_menu_adm = st.tabs(["📋 Gestão de Coletas", "📉 Registrar/Ver Vales", "👤 Cadastrar Usuários"])
         
+        # ----------------- ABA 1: GESTÃO DE COLETAS -----------------
         with sub_menu_adm[0]:
-            # --- SEÇÃO EXCLUSIVA: BOTÃO DE PAGAMENTO EM MASSA APENAS AQUI ---
+            st.markdown("### 🔍 Filtros Gerais do Período")
+            col_f1, col_f2, col_f3 = st.columns(3)
+            with col_f1:
+                data_inicio = st.date_input("Data Início:", value=st.session_state["filtro_data_inicio"], key="filtro_c_ini")
+            with col_f2:
+                data_fim = st.date_input("Data Fim:", value=st.session_state["filtro_data_fim"], key="filtro_c_fim")
+            with col_f3:
+                coletor_sel = st.selectbox("Filtrar por Coletor:", lista_coletores, index=lista_coletores.index(st.session_state["filtro_coletor"]) if st.session_state["filtro_coletor"] in lista_coletores else 0, key="filtro_c_col")
+            
+            st.session_state["filtro_data_inicio"] = data_inicio
+            st.session_state["filtro_data_fim"] = data_fim
+            st.session_state["filtro_coletor"] = coletor_sel
+
+            # Filtragem dos dados de coletas baseada na aba
+            if not df_bruto_coletas.empty:
+                df_bruto_coletas['data_dt'] = pd.to_datetime(df_bruto_coletas['data']).dt.date
+                df_filtrado = df_bruto_coletas[(df_bruto_coletas['data_dt'] >= data_inicio) & (df_bruto_coletas['data_dt'] <= data_fim)].copy()
+                if coletor_sel != "Todos":
+                    df_filtrado = df_filtrado[df_filtrado["coletor"] == coletor_sel]
+            else:
+                df_filtrado = df_bruto_coletas.copy()
+
+            # Filtragem de vales paralela apenas para bater com a conta financeira do período
+            if not df_bruto_vales.empty:
+                df_bruto_vales['data_dt'] = pd.to_datetime(df_bruto_vales['data']).dt.date
+                vales_financeiro = df_bruto_vales[(df_bruto_vales['data_dt'] >= data_inicio) & (df_bruto_vales['data_dt'] <= data_fim)].copy()
+                if coletor_sel != "Todos":
+                    vales_financeiro = vales_financeiro[vales_financeiro["coletor"] == coletor_sel]
+            else:
+                vales_financeiro = df_bruto_vales.copy()
+
+            aprovados_periodo = df_filtrado[df_filtrado["status"] == "Aprovado"] if not df_filtrado.empty else pd.DataFrame()
+            nao_pagas_lista = aprovados_periodo[aprovados_periodo["pago"] != True] if not aprovados_periodo.empty else pd.DataFrame()
+
+            # --- BOTÃO "MARCAR TUDO COMO PAGO" ACOPLADO EMBAIXO DOS FILTROS ---
             if coletor_sel != "Todos" and not nao_pagas_lista.empty:
                 if st.button(f"💰 Marcar TODAS as Coletas de {coletor_sel} como Pagas", type="primary", use_container_width=True):
                     with st.spinner(f"Processando pagamento em massa para {coletor_sel}..."):
@@ -209,7 +198,14 @@ else:
                     st.success(f"✅ Sucesso! {len(ids_para_pagar)} coletas de {coletor_sel} foram pagas.")
                     time.sleep(0.5)
                     st.rerun()
-                st.markdown(" ") # Espaçamento sutil
+
+            if st.button("❌ Limpar Filtros de Coletas", use_container_width=True):
+                st.session_state["filtro_data_inicio"] = primeiro_dia_mes
+                st.session_state["filtro_data_fim"] = data_hoje
+                st.session_state["filtro_coletor"] = "Todos"
+                st.rerun()
+
+            st.markdown("---")
 
             st.subheader("📥 Coletas Pendentes no Período")
             pendentes = df_filtrado[df_filtrado["status"] == "Pendente"] if not df_filtrado.empty else pd.DataFrame()
@@ -235,7 +231,7 @@ else:
                     st.markdown("---")
             
             st.subheader("💵 Fechamento Financeiro")
-            total_vales = vales_filtrados["valor_vale"].sum() if not vales_filtrados.empty else 0.0
+            total_vales = vales_financeiro["valor_vale"].sum() if not vales_financeiro.empty else 0.0
             total_bruto = aprovados_periodo["valor_total"].sum() if not aprovados_periodo.empty else 0.0
             total_nao_pago_adm = nao_pagas_lista["valor_total"].sum() if not nao_pagas_lista.empty else 0.0
             total_liquido = max(0.0, float(total_nao_pago_adm) - float(total_vales))
@@ -264,6 +260,7 @@ else:
                                 st.rerun()
                     st.markdown("---")
 
+        # ----------------- ABA 2: REGISTRAR/VER VALES -----------------
         with sub_menu_adm[1]:
             st.subheader("💰 Registrar Vale / Adiantamento")
             coletores_vales = [u["nome_completo"] for u in res_users_data if u.get("cargo") == "COLETOR"]
@@ -290,20 +287,39 @@ else:
             else:
                 st.info("Nenhum coletor cadastrado para receber vales.")
                 
-            # Histórico de vales emitidos conforme filtros do topo
             st.markdown("---")
             st.subheader("📋 Histórico de Vales Emitidos")
-            if vales_filtrados.empty:
-                st.info("Nenhum vale encontrado para o período ou coletor selecionado.")
+            
+            # --- NOVO FILTRO DE DATA EXCLUSIVO PARA O HISTÓRICO DE VALES ---
+            st.markdown("#### 🔍 Filtrar Histórico de Vales")
+            col_v1, col_v2 = st.columns(2)
+            with col_v1:
+                v_data_ini = st.date_input("De (Vale):", value=st.session_state["v_adm_filtro_inicio"], key="v_adm_ini")
+            with col_v2:
+                v_data_fim = st.date_input("Até (Vale):", value=st.session_state["v_adm_filtro_fim"], key="v_adm_fim")
+            
+            st.session_state["v_adm_filtro_inicio"] = v_data_ini
+            st.session_state["v_adm_filtro_fim"] = v_data_fim
+            
+            # Filtragem dos vales baseada estritamente no filtro próprio desta aba
+            if not df_bruto_vales.empty:
+                df_bruto_vales['data_dt'] = pd.to_datetime(df_bruto_vales['data']).dt.date
+                vales_filtrados_historico = df_bruto_vales[(df_bruto_vales['data_dt'] >= v_data_ini) & (df_bruto_vales['data_dt'] <= v_data_fim)].copy()
             else:
-                st.metric("Total de Vales Listados", f"R$ {vales_filtrados['valor_vale'].sum():.2f}")
-                if 'data_dt' in vales_filtrados.columns:
-                    vales_exibicao = vales_filtrados.drop(columns=['data_dt'])
+                vales_filtrados_historico = df_bruto_vales.copy()
+
+            if vales_filtrados_historico.empty:
+                st.info("Nenhum vale encontrado para o período de vales selecionado.")
+            else:
+                st.metric("Total de Vales Listados", f"R$ {vales_filtrados_historico['valor_vale'].sum():.2f}")
+                if 'data_dt' in vales_filtrados_historico.columns:
+                    vales_exibicao = vales_filtrados_historico.drop(columns=['data_dt'])
                 else:
-                    vales_exibicao = vales_filtrados.copy()
+                    vales_exibicao = vales_filtrados_historico.copy()
                 
                 st.dataframe(vales_exibicao[["data", "coletor", "valor_vale", "descricao"]].sort_values(by="data", ascending=False), use_container_width=True)
 
+        # ----------------- ABA 3: CADASTRO DE USUÁRIOS -----------------
         with sub_menu_adm[2]:
             st.subheader("👤 Cadastrar Novo Usuário")
             novo_nome = st.text_input("Nome Completo:", key=f"nn_{st.session_state['reset_ctr']}")
@@ -342,7 +358,7 @@ else:
             foto_comprovante = st.file_uploader("Selecione ou tire a foto do comprovante:", type=["png", "jpg", "jpeg"], key=f"foto_c_{st.session_state['reset_ctr']}")
                 
             if st.button("Enviar para Aprovação", type="primary", use_container_width=True):
-                if quantity and foto_comprovante:
+                if quantidade and foto_comprovante:
                     try:
                         with st.spinner("Enviando foto para o servidor..."):
                             nome_foto_nuvem = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{st.session_state['usuario_atual']}.png"
