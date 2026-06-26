@@ -243,11 +243,12 @@ else:
                     with col_p1:
                         st.write(f"**{row['coletor']}** | R$ {float(row['valor_total']):.2f} | Data: {row['data']} ({status_pago_txt})")
                     with col_p2:
-                        if pago_atual != True:
-                            if st.button(f"Marcar como Pago", key=f"pag_{row['id']}"):
-                                with St.spinner("Atualizando..."):
-                                    supabase.table("coletas").update({"pago": True}).eq("id", row["id"]).execute()
-                                st.rerun()
+                        with col_p2:
+                            if pago_atual != True:
+                                if st.button(f"Marcar como Pago", key=f"pag_{row['id']}"):
+                                    with st.spinner("Atualizando..."):  # <--- Corrigido para "st" minúsculo
+                                        supabase.table("coletas").update({"pago": True}).eq("id", row["id"]).execute()
+                                    st.rerun()
                     st.markdown("---")
 
         with sub_menu_adm[1]:
