@@ -135,9 +135,8 @@ else:
     # =========================================================================
     if st.session_state["cargo_atual"] == "ADM":
         st.subheader("🛡️ Painel do Administrador")
-        sub_menu_adm = st.tabs(["📋 Gestão de Coletas", "📉 Registrar/Ver Vales", "👤 Cadastrar Usuários"])
         
-        # Pré-carregamento dos dados de vales e coletas para cruzar informações nas abas
+        # Pré-carregamento global dos dados para cruzar informações nas abas
         try:
             res_coletas = supabase.table("coletas").select("*").execute()
             res_vales = supabase.table("vales_coleta").select("*").execute()
@@ -151,7 +150,8 @@ else:
             df = pd.DataFrame(columns=["id", "data", "coletor", "quantidade", "foto_url", "status", "valor_total", "pago"])
             df_vales = pd.DataFrame(columns=["id", "data", "coletor", "valor_vale", "descricao"])
             lista_coletores = ["Todos"]
-            
+
+        # --- RETORNO DOS FILTROS PARA O TOPO ABSOLUTO DO PAINEL ADM ---
         st.subheader("🔍 Filtros Gerais do Período")
         col_f1, col_f2, col_f3 = st.columns(3)
         with col_f1:
@@ -165,13 +165,7 @@ else:
         st.session_state["filtro_data_fim"] = data_fim
         st.session_state["filtro_coletor"] = coletor_sel
 
-        if st.button("❌ Limpar Filtros", use_container_width=True):
-            st.session_state["filtro_data_inicio"] = primeiro_dia_mes
-            st.session_state["filtro_data_fim"] = data_hoje
-            st.session_state["filtro_coletor"] = "Todos"
-            st.rerun()
-            
-        # Aplicação dos filtros para as coletas
+        # Aplicação lógica dos filtros para coletas
         if not df.empty:
             df['data_dt'] = pd.to_datetime(df['data']).dt.date
             df_filtrado = df[(df['data_dt'] >= data_inicio) & (df['data_dt'] <= data_fim)].copy()
@@ -180,7 +174,7 @@ else:
         else:
             df_filtrado = df.copy()
 
-        # Aplicação dos mesmos filtros para os vales
+        # Aplicação lógica dos filtros para vales
         if not df_vales.empty:
             df_vales['data_dt'] = pd.to_datetime(df_vales['data']).dt.date
             vales_filtrados = df_vales[(df_vales['data_dt'] >= data_inicio) & (df_vales['data_dt'] <= data_fim)].copy()
@@ -188,6 +182,32 @@ else:
                 vales_filtrados = vales_filtrados[vales_filtrados["coletor"] == coletor_sel]
         else:
             vales_filtrados = df_vales.copy()
+
+        # Descobre se há algo pendente de pagamento para habilitar o botão de massa
+        aprovados_periodo = df_filtrado[df_filtrado["status"] == "Aprovado"] if not df_filtrado.empty else pd.DataFrame()
+        nao_pagas_lista = aprovados_periodo[aprovados_periodo["pago"] != True] if not aprovados_periodo.empty else pd.DataFrame()
+
+        # --- BOTÃO "MARCAR TUDO COMO PAGO" LOGO ABAIXO DOS FILTROS ---
+        if coletor_sel != "Todos" and not nao_pagas_lista.empty:
+            if st.button(f"💰 Marcar TODAS as Coletas de {coletor_sel} como Pagas", type="primary", use_container_width=True):
+                with st.spinner(f"Processando pagamento em massa para {coletor_sel}..."):
+                    ids_para_pagar = nao_pagas_lista["id"].tolist()
+                    for cid in ids_para_pagar:
+                        supabase.table("coletas").update({"pago": True}).eq("id", cid).execute()
+                st.success(f"✅ Sucesso! {len(ids_para_pagar)} coletas de {coletor_sel} foram pagas.")
+                time.sleep(0.5)
+                st.rerun()
+
+        if st.button("❌ Limpar Filtros", use_container_width=True):
+            st.session_state["filtro_data_inicio"] = primeiro_dia_mes
+            st.session_state["filtro_data_fim"] = data_hoje
+            st.session_state["filtro_coletor"] = "Todos"
+            st.rerun()
+
+        st.markdown("---")
+
+        # Tabs de navegação interna do Administrador
+        sub_menu_adm = st.tabs(["📋 Gestão de Coletas", "📉 Registrar/Ver Vales", "👤 Cadastrar Usuários"])
         
         with sub_menu_adm[0]:
             st.subheader("📥 Coletas Pendentes no Período")
@@ -215,36 +235,14 @@ else:
             
             st.subheader("💵 Fechamento Financeiro")
             total_vales = vales_filtrados["valor_vale"].sum() if not vales_filtrados.empty else 0.0
-            
-            aprovados_periodo = df_filtrado[df_filtrado["status"] == "Aprovado"] if not df_filtrado.empty else pd.DataFrame()
-            if not aprovados_periodo.empty:
-                total_bruto = aprovados_periodo["valor_total"].sum()
-                nao_pagas_lista = aprovados_periodo[aprovados_periodo["pago"] != True]
-                total_nao_pago_adm = nao_pagas_lista["valor_total"].sum()
-            else:
-                total_bruto = 0.0
-                total_nao_pago_adm = 0.0
-                nao_pagas_lista = pd.DataFrame()
-            
+            total_bruto = aprovados_periodo["valor_total"].sum() if not aprovados_periodo.empty else 0.0
+            total_nao_pago_adm = nao_pagas_lista["valor_total"].sum() if not nao_pagas_lista.empty else 0.0
             total_liquido = max(0.0, float(total_nao_pago_adm) - float(total_vales))
             
             cm1, cm2, cm3 = st.columns(3)
             cm1.metric("Bruto Aprovado", f"R$ {total_bruto:.2f}")
             cm2.metric("Desconto em Vales (-)", f"R$ {total_vales:.2f}")
             cm3.metric("Líquido a Pagar", f"R$ {total_liquido:.2f}")
-            
-            # --- NOVO REQUISITO: BOTÃO DE PAGAMENTO EM MASSA ---
-            if coletor_sel != "Todos" and not nao_pagas_lista.empty:
-                st.markdown(" ")
-                if st.button(f"💰 Marcar TODAS as Coletas de {coletor_sel} como Pagas", type="primary", use_container_width=True):
-                    with st.spinner(f"Processando pagamento em massa para {coletor_sel}..."):
-                        # Coleta os IDs de todas as coletas filtradas do período que estão pendentes de pagamento
-                        ids_para_pagar = nao_pagas_lista["id"].tolist()
-                        for cid in ids_para_pagar:
-                            supabase.table("coletas").update({"pago": True}).eq("id", cid).execute()
-                    st.success(f"✅ Sucesso! {len(ids_para_pagar)} coletas de {coletor_sel} foram marcadas como pagas.")
-                    time.sleep(0.5)
-                    st.rerun()
             
             st.markdown("#### Detalhes dos Aprovados")
             if aprovados_periodo.empty:
@@ -291,20 +289,18 @@ else:
             else:
                 st.info("Nenhum coletor cadastrado para receber vales.")
                 
-            # --- NOVO REQUISITO: TABELA DE VALES DO PERÍODO FILTRADO NO ADM ---
+            # --- HISTÓRICO DE VALES EMBAIXO DO LANÇAMENTO ---
             st.markdown("---")
             st.subheader("📋 Histórico de Vales Emitidos")
             if vales_filtrados.empty:
                 st.info("Nenhum vale encontrado para o período ou coletor selecionado.")
             else:
                 st.metric("Total de Vales Listados", f"R$ {vales_filtrados['valor_vale'].sum():.2f}")
-                # Remove a coluna auxiliar de data para exibição limpa
                 if 'data_dt' in vales_filtrados.columns:
                     vales_exibicao = vales_filtrados.drop(columns=['data_dt'])
                 else:
                     vales_exibicao = vales_filtrados.copy()
                 
-                # Exibe de forma profissional e organizada as colunas relevantes
                 st.dataframe(vales_exibicao[["data", "coletor", "valor_vale", "descricao"]].sort_values(by="data", ascending=False), use_container_width=True)
 
         with sub_menu_adm[2]:
@@ -326,7 +322,6 @@ else:
                         }
                         with st.spinner("Cadastrando..."):
                             supabase.table("usuarios").insert(novo_user_dict).execute()
-                        # Limpa o cache para o novo usuário aparecer imediatamente nos menus de filtro
                         st.cache_data.clear()
                         st.success(f"🎉 {novo_nome} cadastrado como {novo_perfil}!")
                         st.session_state["reset_ctr"] += 1
