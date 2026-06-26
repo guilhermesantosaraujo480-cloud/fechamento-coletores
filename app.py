@@ -8,9 +8,6 @@ import extra_streamlit_components as stx
 # Configuração da página (otimizada para celular)
 st.set_page_config(page_title="Sistema Vivo Coletas", layout="centered", initial_sidebar_state="collapsed")
 
-# Inicializa o gerenciador de cookies
-cookie_manager = stx.CookieManager()
-
 # VALOR PADRÃO POR COLETA
 VALOR_POR_COLETA = 10.0
 
@@ -24,23 +21,26 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
-# ----------------- CORREÇÃO CRÍTICA PARA O F5 (AGUARDAR COOKIES) -----------------
-# Força o Streamlit a esperar até 1.5 segundos para ler os cookies do navegador antes de decidir se renderiza o login
+# ----------------- GERENCIAMENTO DE SESSÃO VIA COOKIES (CORRIGIDO) -----------------
+# Criamos uma sala de espera que muda de chave a cada tentativa, eliminando o erro de "Duplicate Key"
+cookie_manager = stx.CookieManager(key="init")
+
 if "cookies_carregados" not in st.session_state:
     with st.spinner("Carregando sessão..."):
         tentativas = 0
-        while tentativas < 15:  # 15 * 0.1s = 1.5s no máximo
-            all_cookies = cookie_manager.get_all()
-            if all_cookies:  # Se achou qualquer cookie, sai do loop
+        while tentativas < 10:  # 10 tentativas é o suficiente
+            # Muda a chave interna do componente a cada volta para o Streamlit não reclamar
+            all_cookies = cookie_manager.get_all(key=f"loop_cookie_{tentativas}")
+            if all_cookies:  # Se conseguiu ler os cookies, para o loop
                 break
             time.sleep(0.1)
             tentativas += 1
         st.session_state["cookies_carregados"] = True
 
-# Recupera os dados salvos nos cookies de forma segura
-cookie_usuario = cookie_manager.get(cookie="vivo_coletas_user")
-cookie_nome = cookie_manager.get(cookie="vivo_coletas_nome")
-cookie_cargo = cookie_manager.get(cookie="vivo_coletas_cargo")
+# Recupera os dados salvos de forma segura (usando chaves fixas agora que o loop passou)
+cookie_usuario = cookie_manager.get(cookie="vivo_coletas_user", key="get_user")
+cookie_nome = cookie_manager.get(cookie="vivo_coletas_nome", key="get_nome")
+cookie_cargo = cookie_manager.get(cookie="vivo_coletas_cargo", key="get_cargo")
 
 # Gerenciamento de estado de Login
 if "logado" not in st.session_state:
@@ -96,12 +96,12 @@ if not st.session_state["logado"]:
                 
                 # Salva nos cookies do navegador (Expira em 30 dias)
                 valido_ate = datetime.now() + pd.Timedelta(days=30)
-                cookie_manager.set("vivo_coletas_user", user_input, expires_at=valido_ate)
-                cookie_manager.set("vivo_coletas_nome", user_valido[0]["nome_completo"], expires_at=valido_ate)
-                cookie_manager.set("vivo_coletas_cargo", user_valido[0]["cargo"], expires_at=valido_ate)
+                cookie_manager.set("vivo_coletas_user", user_input, expires_at=valido_ate, key="set_user")
+                cookie_manager.set("vivo_coletas_nome", user_valido[0]["nome_completo"], expires_at=valido_ate, key="set_nome")
+                cookie_manager.set("vivo_coletas_cargo", user_valido[0]["cargo"], expires_at=valido_ate, key="set_cargo")
                 
                 st.success(f"Bem-vindo, {st.session_state['nome_completo_atual']}!")
-                time.sleep(0.5) # Pequena pausa para garantir a gravação do cookie
+                time.sleep(0.5)
                 st.rerun()
             else:
                 st.error("Usuário ou senha incorretos.")
@@ -123,9 +123,9 @@ else:
             del st.session_state["cookies_carregados"]
         
         # Remove os cookies do navegador
-        cookie_manager.delete("vivo_coletas_user")
-        cookie_manager.delete("vivo_coletas_nome")
-        cookie_manager.delete("vivo_coletas_cargo")
+        cookie_manager.delete("vivo_coletas_user", key="del_user")
+        cookie_manager.delete("vivo_coletas_nome", key="del_nome")
+        cookie_manager.delete("vivo_coletas_cargo", key="del_cargo")
         time.sleep(0.3)
         st.rerun()
 
@@ -311,7 +311,7 @@ else:
             foto_comprovante = st.file_uploader("Selecione ou tire a foto do comprovante:", type=["png", "jpg", "jpeg"], key=f"foto_c_{st.session_state['reset_ctr']}")
                 
             if st.button("Enviar para Aprovação", type="primary", use_container_width=True):
-                if quantidade and foto_comprovante:
+                if quantity := quantidade and foto_comprovante:
                     try:
                         with st.spinner("Enviando foto para o servidor..."):
                             nome_foto_nuvem = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{st.session_state['usuario_atual']}.png"
@@ -327,10 +327,10 @@ else:
                             novo_registro = {
                                 "data": datetime.now().strftime("%Y-%m-%d"), 
                                 "coletor": st.session_state['nome_completo_atual'], 
-                                "quantidade": int(quantidade),
+                                "quantidade": int(quantity),
                                 "foto_url": foto_url_final, 
                                 "status": "Pendente", 
-                                "valor_total": round(float(quantidade * VALOR_POR_COLETA), 2),
+                                "valor_total": round(float(quantity * VALOR_POR_COLETA), 2),
                                 "pago": False
                             }
                             
