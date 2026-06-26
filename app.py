@@ -33,6 +33,9 @@ def listar_usuarios_cache():
         return []
 
 # ----------------- INICIALIZAÇÃO PREVENTIVA DE TODO O STATE -----------------
+data_hoje = datetime.now().date()
+primeiro_dia_mes = data_hoje.replace(day=1)
+
 if "logado" not in st.session_state:
     st.session_state["logado"] = False
     st.session_state["usuario_atual"] = None
@@ -42,16 +45,13 @@ if "logado" not in st.session_state:
 if "reset_ctr" not in st.session_state:
     st.session_state["reset_ctr"] = 0
 
-data_hoje = datetime.now().date()
-primeiro_dia_mes = data_hoje.replace(day=1)
-
-# Estados persistentes dos filtros da aba de Coletas
-if "filtro_data_inicio" not in st.session_state:
-    st.session_state["filtro_data_inicio"] = primeiro_dia_mes
-if "filtro_data_fim" not in st.session_state:
-    st.session_state["filtro_data_fim"] = data_hoje
-if "filtro_coletor" not in st.session_state:
-    st.session_state["filtro_coletor"] = "Todos"
+# Inicializa chaves dos filtros se não existirem
+if "input_data_ini" not in st.session_state:
+    st.session_state["input_data_ini"] = primeiro_dia_mes
+if "input_data_fim" not in st.session_state:
+    st.session_state["input_data_fim"] = data_hoje
+if "input_coletor_sel" not in st.session_state:
+    st.session_state["input_coletor_sel"] = "Todos"
 
 # Estados persistentes dos filtros da aba de Vales (ADMIN)
 if "v_adm_filtro_inicio" not in st.session_state:
@@ -65,6 +65,11 @@ if "c_filtro_inicio" not in st.session_state:
 if "c_filtro_fim" not in st.session_state:
     st.session_state["c_filtro_fim"] = data_hoje
 
+# --- FUNÇÃO DA ESTRATÉGIA DE LIMPEZA DE FILTROS ---
+def limpar_filtros_callback():
+    st.session_state["input_data_ini"] = primeiro_dia_mes
+    st.session_state["input_data_fim"] = data_hoje
+    st.session_state["input_coletor_sel"] = "Todos"
 
 # ----------------- RECUPERAÇÃO DE SESSÃO VIA TOKEN (RESISTENTE AO F5) -----------------
 if not st.session_state["logado"] and "session" in st.query_params:
@@ -160,62 +165,49 @@ else:
             
             col_f1, col_f2, col_f3 = st.columns(3)
             with col_f1:
-                data_inicio = st.date_input("Data Início:", value=st.session_state["filtro_data_inicio"], key="input_data_ini")
+                data_inicio = st.date_input("Data Início:", key="input_data_ini")
             with col_f2:
-                data_fim = st.date_input("Data Fim:", value=st.session_state["filtro_data_fim"], key="input_data_fim")
+                data_fim = st.date_input("Data Fim:", key="input_data_fim")
             with col_f3:
-                idx_default = lista_coletores.index(st.session_state["filtro_coletor"]) if st.session_state["filtro_coletor"] in lista_coletores else 0
+                # Evita falha se o coletor sumir da lista
+                idx_default = lista_coletores.index(st.session_state["input_coletor_sel"]) if st.session_state["input_coletor_sel"] in lista_coletores else 0
                 coletor_sel = st.selectbox("Filtrar por Coletor:", lista_coletores, index=idx_default, key="input_coletor_sel")
-            
-            # Sincroniza escolhas manuais do usuário com o state interno de cálculo
-            st.session_state["filtro_data_inicio"] = data_inicio
-            st.session_state["filtro_data_fim"] = data_fim
-            st.session_state["filtro_coletor"] = coletor_sel
 
-            # --- BOTÃO LIMPAR FILTROS DE COLETAS (AJUSTADO DE FORMA DEFINITIVA) ---
-            if st.button("❌ Limpar Filtros de Coletas", use_container_width=True):
-                # Zera as variáveis de cálculo
-                st.session_state["filtro_data_inicio"] = primeiro_dia_mes
-                st.session_state["filtro_data_fim"] = data_hoje
-                st.session_state["filtro_coletor"] = "Todos"
-                
-                # Força os seletores visuais da tela a resetarem no próximo ciclo
-                st.session_state["input_data_ini"] = primeiro_dia_mes
-                st.session_state["input_data_fim"] = data_hoje
-                st.session_state["input_coletor_sel"] = "Todos"
-                st.rerun()
+            # --- BOTÃO LIMPAR FILTROS DE COLETAS (CORRIGIDO VIA CALLBACK SAFELY) ---
+            st.button("❌ Limpar Filtros de Coletas", on_click=limpar_filtros_callback, use_container_width=True)
 
             st.markdown("---")
 
             # Filtragem dos dados de coletas baseada na aba
             if not df_bruto_coletas.empty:
                 df_bruto_coletas['data_dt'] = pd.to_datetime(df_bruto_coletas['data']).dt.date
-                df_filtrado = df_bruto_coletas[(df_bruto_coletas['data_dt'] >= st.session_state["filtro_data_inicio"]) & (df_bruto_coletas['data_dt'] <= st.session_state["filtro_data_fim"])].copy()
-                if st.session_state["filtro_coletor"] != "Todos":
-                    df_filtrado = df_filtrado[df_filtrado["coletor"] == st.session_state["filtro_coletor"]]
+                df_filtrado = df_bruto_coletas[(df_bruto_coletas['data_dt'] >= data_inicio) & (df_bruto_coletas['data_dt'] <= data_fim)].copy()
+                if coletor_sel != "Todos":
+                    df_filtrado = df_filtrado[df_filtrado["coletor"] == coletor_sel]
             else:
                 df_filtrado = df_bruto_coletas.copy()
 
             # Filtragem de vales paralela apenas para bater com a conta financeira do período
             if not df_bruto_vales.empty:
                 df_bruto_vales['data_dt'] = pd.to_datetime(df_bruto_vales['data']).dt.date
-                vales_financeiro = df_bruto_vales[(df_bruto_vales['data_dt'] >= st.session_state["filtro_data_inicio"]) & (df_bruto_vales['data_dt'] <= st.session_state["filtro_data_fim"])].copy()
-                if st.session_state["filtro_coletor"] != "Todos":
-                    vales_financeiro = vales_financeiro[vales_financeiro["coletor"] == st.session_state["filtro_coletor"]]
+                vales_financeiro = df_bruto_vales[(df_bruto_vales['data_dt'] >= data_inicio) & (df_bruto_vales['data_dt'] <= data_fim)].copy()
+                if coletor_sel != "Todos":
+                    vales_financeiro = vales_financeiro[vales_financeiro["coletor"] == coletor_sel]
             else:
                 vales_financeiro = df_bruto_vales.copy()
 
             aprovados_periodo = df_filtrado[df_filtrado["status"] == "Aprovado"] if not df_filtrado.empty else pd.DataFrame()
             nao_pagas_lista = aprovados_periodo[aprovados_periodo["pago"] != True] if not aprovados_periodo.empty else pd.DataFrame()
+            ja_pagas_lista = aprovados_periodo[aprovados_periodo["pago"] == True] if not aprovados_periodo.empty else pd.DataFrame()
 
             # --- USO DE CONTAINER ESTÁVEL PARA EVITAR O BUG 'REMOVECHILD' ---
             container_botoes_massa = st.container()
             with container_botoes_massa:
-                if st.session_state["filtro_coletor"] != "Todos" and not nao_pagas_lista.empty:
-                    confirma_pagamento = st.checkbox(f"🔒 Desbloquear botão de pagamento em massa para {st.session_state['filtro_coletor']}", key="chk_confirma")
+                if coletor_sel != "Todos" and not nao_pagas_lista.empty:
+                    confirma_pagamento = st.checkbox(f"🔒 Desbloquear botão de pagamento em massa para {coletor_sel}", key="chk_confirma")
                     
                     if confirma_pagamento:
-                        if st.button(f"💰 Marcar TODAS as Coletas de {st.session_state['filtro_coletor']} como Pagas", type="primary", use_container_width=True):
+                        if st.button(f"💰 Marcar TODAS as Coletas de {coletor_sel} como Pagas", type="primary", use_container_width=True):
                             with st.spinner(f"Processando pagamento em massa..."):
                                 ids_para_pagar = nao_pagas_lista["id"].tolist()
                                 for cid in ids_para_pagar:
@@ -224,7 +216,7 @@ else:
                             time.sleep(0.4)
                             st.rerun()
                     else:
-                        st.button(f"💰 Marcar TODAS as Coletas de {st.session_state['filtro_coletor']} como Pagas (Marque a caixa acima)", type="secondary", disabled=True, use_container_width=True)
+                        st.button(f"💰 Marcar TODAS as Coletas de {coletor_sel} como Pagas (Marque a caixa acima)", type="secondary", disabled=True, use_container_width=True)
 
             st.subheader("📥 Coletas Pendentes no Período")
             pendentes = df_filtrado[df_filtrado["status"] == "Pendente"] if not df_filtrado.empty else pd.DataFrame()
@@ -252,30 +244,35 @@ else:
             st.subheader("💵 Fechamento Financeiro")
             total_vales = vales_financeiro["valor_vale"].sum() if not vales_financeiro.empty else 0.0
             total_bruto = aprovados_periodo["valor_total"].sum() if not aprovados_periodo.empty else 0.0
+            total_ja_pago = ja_pagas_lista["valor_total"].sum() if not ja_pagas_lista.empty else 0.0
             total_nao_pago_adm = nao_pagas_lista["valor_total"].sum() if not nao_pagas_lista.empty else 0.0
+            
+            # Conta correta: Do total que falta pagar, desconta os vales pendentes
             total_liquido = max(0.0, float(total_nao_pago_adm) - float(total_vales))
             
-            cm1, cm2, cm3 = st.columns(3)
-            cm1.metric("Bruto Aprovado", f"R$ {total_bruto:.2f}")
-            cm2.metric("Desconto em Vales (-)", f"R$ {total_vales:.2f}")
-            cm3.metric("Líquido a Pagar", f"R$ {total_liquido:.2f}")
+            cm1, cm2, cm3, cm4 = st.columns(4)
+            cm1.metric("Bruto Período", f"R$ {total_bruto:.2f}")
+            cm2.metric("Valor Já Pago", f"R$ {total_ja_pago:.2f}")
+            cm3.metric("Desconto Vales (-)", f"R$ {total_vales:.2f}")
+            cm4.metric("Líquido a Pagar", f"R$ {total_liquido:.2f}")
             
-            # --- RECIBO DENTRO DE CONTAINER FIXO (EVITA QUEBRA) ---
+            # --- RECIBO AJUSTADO COM O VALOR JÁ PAGO ADICIONADO ---
             container_recibo = st.container()
             with container_recibo:
-                if st.session_state["filtro_coletor"] != "Todos":
+                if coletor_sel != "Todos":
                     texto_recibo = (
                         f"*FECHAMENTO DE COLETAS*\n"
-                        f"*Coletor:* {st.session_state['filtro_coletor']}\n"
-                        f"*Período:* {st.session_state['filtro_data_inicio'].strftime('%d/%m/%Y')} até {st.session_state['filtro_data_fim'].strftime('%d/%m/%Y')}\n"
+                        f"*Coletor:* {coletor_sel}\n"
+                        f"*Período:* {data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')}\n"
                         f"-----------------------------\n"
                         f"💰 *Total Bruto Aprovado:* R$ {total_bruto:.2f}\n"
+                        f"💵 *Valor Já Pago:* R$ {total_ja_pago:.2f}\n"
                         f"📉 *Desconto em Vales:* R$ {total_vales:.2f}\n"
-                        f"💵 *Líquido à Pagar:* R$ {total_liquido:.2f}\n"
+                        f"💵 *Líquido à Pagar Restante:* R$ {total_liquido:.2f}\n"
                         f"-----------------------------\n"
                         f"Gerado em: {datetime.now().strftime('%d/%m/%Y às %H:%M')}"
                     )
-                    st.text_area("📋 Texto do Recibo (Pronto para copiar)", value=texto_recibo, height=160, key="txt_recibo_area")
+                    st.text_area("📋 Texto do Recibo (Pronto para copiar)", value=texto_recibo, height=180, key="txt_recibo_area")
             
             st.markdown("#### Detalhes dos Aprovados")
             if aprovados_periodo.empty:
@@ -470,14 +467,14 @@ else:
                     else:
                         vales_dele = 0.0
                     
-                    total_ja_pago = aprovadas[aprovadas["pago"] == True]["valor_total"].sum() if not aprovadas.empty else 0.0
-                    total_nao_pago = aprovadas[aprovadas["pago"] != True]["valor_total"].sum() if not aprovadas.empty else 0.0
-                    total_liquido_coletor = max(0.0, round(float(total_nao_pago) - float(vales_dele), 2))
+                    total_ja_pago_c = aprovadas[aprovadas["pago"] == True]["valor_total"].sum() if not aprovadas.empty else 0.0
+                    total_nao_pago_c = aprovadas[aprovadas["pago"] != True]["valor_total"].sum() if not aprovadas.empty else 0.0
+                    total_liquido_coletor = max(0.0, round(float(total_nao_pago_c) - float(vales_dele), 2))
                     
                     c1, c2, c3 = st.columns(3)
                     c1.metric("Líquido a Receber", f"R$ {total_liquido_coletor:.2f}")
                     c2.metric("Vales no Período (-)", f"R$ {vales_dele:.2f}")
-                    c3.metric("Valor Já Pago", f"R$ {total_ja_pago:.2f}")
+                    c3.metric("Valor Já Pago", f"R$ {total_ja_pago_c:.2f}")
                     
                     st.markdown("### Envios do Período")
                     for idx, row in dados_coletor.iloc[::-1].iterrows():
