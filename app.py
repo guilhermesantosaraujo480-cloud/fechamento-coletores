@@ -218,16 +218,22 @@ else:
                 motivo_vale = st.text_input("Observação/Motivo (Opcional):", value="Adiantamento de Coletas", key=f"mot_vale_{st.session_state['reset_ctr']}")
                 
                 if st.button("Lançar Vale", type="primary"):
-                    novo_vale = {
-                        "data": data_vale.strftime("%Y-%m-%d"),
-                        "coletor": str(coletor_vale),
-                        "valor_vale": round(float(valor_vale_input), 2),
-                        "descricao": str(motivo_vale)
-                    }
-                    supabase.table("vales_coleta").insert(novo_vale).execute()
-                    st.success(f"✅ Vale de R$ {valor_vale_input:.2f} registrado para {coletor_vale}!")
-                    st.session_state["reset_ctr"] += 1
-                    st.rerun()
+                    try:
+                        # Forçando a conversão exata dos tipos aceitos pelo Supabase
+                        novo_vale = {
+                            "data": str(data_vale),               # Garante texto da data AAAA-MM-DD
+                            "coletor": str(coletor_vale).strip(), # Texto limpo do coletor
+                            "valor_vale": float(valor_vale_input),# Força número decimal (numeric)
+                            "descricao": str(motivo_vale).strip() # Texto da descrição
+                        }
+                        
+                        supabase.table("vales_coleta").insert(novo_vale).execute()
+                        st.success(f"✅ Vale de R$ {valor_vale_input:.2f} registrado para {coletor_vale}!")
+                        
+                        st.session_state["reset_ctr"] += 1
+                        st.rerun()
+                    except Exception as vale_err:
+                        st.error(f"⚠️ Erro ao salvar o vale no banco: {vale_err}")
             else:
                 st.info("Nenhum coletor cadastrado para receber vales.")
 
