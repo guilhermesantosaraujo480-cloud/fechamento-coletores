@@ -20,12 +20,16 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
-# ----------------- NOVA ESTRATÉGIA DE SESSÃO (VIA URL QUERY PARAMS) -----------------
+# ----------------- GERENCIAMENTO DE SESSÃO SEGURO (SEM URL EXPOSTA) -----------------
 if "logado" not in st.session_state:
     st.session_state["logado"] = False
     st.session_state["usuario_atual"] = None
     st.session_state["nome_completo_atual"] = None
     st.session_state["cargo_atual"] = None
+
+# Remove qualquer resquício de parâmetro da URL para ninguém tentar burlar
+if "u" in st.query_params:
+    st.query_params.clear()
 
 # SEGUNDA CAMADA DE SEGURANÇA: Se der F5, reconecta direto pela URL de forma nativa
 if not st.session_state["logado"] and "u" in st.query_params:
@@ -73,14 +77,11 @@ if not st.session_state["logado"]:
             user_valido = resposta.data
             
             if user_valido:
-                # 1. Salva no Session State do Streamlit para navegação rápida
+                # Salva APENAS na memória interna e segura do servidor (Session State)
                 st.session_state["logado"] = True
                 st.session_state["usuario_atual"] = user_input
                 st.session_state["nome_completo_atual"] = user_valido[0]["nome_completo"]
                 st.session_state["cargo_atual"] = user_valido[0]["cargo"]
-                
-                # 2. Salva na URL nativa de forma limpa para aguentar o F5
-                st.query_params["u"] = user_input
                 
                 st.success(f"Bem-vindo, {st.session_state['nome_completo_atual']}!")
                 time.sleep(0.3)
