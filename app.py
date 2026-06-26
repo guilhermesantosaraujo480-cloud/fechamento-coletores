@@ -151,7 +151,7 @@ else:
             df_vales = pd.DataFrame(columns=["id", "data", "coletor", "valor_vale", "descricao"])
             lista_coletores = ["Todos"]
 
-        # --- RETORNO DOS FILTROS PARA O TOPO ABSOLUTO DO PAINEL ADM ---
+        # Filtros no topo absoluto do painel ADM
         st.subheader("🔍 Filtros Gerais do Período")
         col_f1, col_f2, col_f3 = st.columns(3)
         with col_f1:
@@ -164,6 +164,12 @@ else:
         st.session_state["filtro_data_inicio"] = data_inicio
         st.session_state["filtro_data_fim"] = data_fim
         st.session_state["filtro_coletor"] = coletor_sel
+
+        if st.button("❌ Limpar Filtros", use_container_width=True):
+            st.session_state["filtro_data_inicio"] = primeiro_dia_mes
+            st.session_state["filtro_data_fim"] = data_hoje
+            st.session_state["filtro_coletor"] = "Todos"
+            st.rerun()
 
         # Aplicação lógica dos filtros para coletas
         if not df.empty:
@@ -183,33 +189,28 @@ else:
         else:
             vales_filtrados = df_vales.copy()
 
-        # Descobre se há algo pendente de pagamento para habilitar o botão de massa
+        # Descobre adiantado se há algo pendente de pagamento para alimentar o botão de massa
         aprovados_periodo = df_filtrado[df_filtrado["status"] == "Aprovado"] if not df_filtrado.empty else pd.DataFrame()
         nao_pagas_lista = aprovados_periodo[aprovados_periodo["pago"] != True] if not aprovados_periodo.empty else pd.DataFrame()
 
-        # --- BOTÃO "MARCAR TUDO COMO PAGO" LOGO ABAIXO DOS FILTROS ---
-        if coletor_sel != "Todos" and not nao_pagas_lista.empty:
-            if st.button(f"💰 Marcar TODAS as Coletas de {coletor_sel} como Pagas", type="primary", use_container_width=True):
-                with st.spinner(f"Processando pagamento em massa para {coletor_sel}..."):
-                    ids_para_pagar = nao_pagas_lista["id"].tolist()
-                    for cid in ids_para_pagar:
-                        supabase.table("coletas").update({"pago": True}).eq("id", cid).execute()
-                st.success(f"✅ Sucesso! {len(ids_para_pagar)} coletas de {coletor_sel} foram pagas.")
-                time.sleep(0.5)
-                st.rerun()
-
-        if st.button("❌ Limpar Filtros", use_container_width=True):
-            st.session_state["filtro_data_inicio"] = primeiro_dia_mes
-            st.session_state["filtro_data_fim"] = data_hoje
-            st.session_state["filtro_coletor"] = "Todos"
-            st.rerun()
-
         st.markdown("---")
 
-        # Tabs de navegação interna do Administrador
+        # Divisão das abas administrativas
         sub_menu_adm = st.tabs(["📋 Gestão de Coletas", "📉 Registrar/Ver Vales", "👤 Cadastrar Usuários"])
         
         with sub_menu_adm[0]:
+            # --- SEÇÃO EXCLUSIVA: BOTÃO DE PAGAMENTO EM MASSA APENAS AQUI ---
+            if coletor_sel != "Todos" and not nao_pagas_lista.empty:
+                if st.button(f"💰 Marcar TODAS as Coletas de {coletor_sel} como Pagas", type="primary", use_container_width=True):
+                    with st.spinner(f"Processando pagamento em massa para {coletor_sel}..."):
+                        ids_para_pagar = nao_pagas_lista["id"].tolist()
+                        for cid in ids_para_pagar:
+                            supabase.table("coletas").update({"pago": True}).eq("id", cid).execute()
+                    st.success(f"✅ Sucesso! {len(ids_para_pagar)} coletas de {coletor_sel} foram pagas.")
+                    time.sleep(0.5)
+                    st.rerun()
+                st.markdown(" ") # Espaçamento sutil
+
             st.subheader("📥 Coletas Pendentes no Período")
             pendentes = df_filtrado[df_filtrado["status"] == "Pendente"] if not df_filtrado.empty else pd.DataFrame()
             
@@ -289,7 +290,7 @@ else:
             else:
                 st.info("Nenhum coletor cadastrado para receber vales.")
                 
-            # --- HISTÓRICO DE VALES EMBAIXO DO LANÇAMENTO ---
+            # Histórico de vales emitidos conforme filtros do topo
             st.markdown("---")
             st.subheader("📋 Histórico de Vales Emitidos")
             if vales_filtrados.empty:
@@ -341,7 +342,7 @@ else:
             foto_comprovante = st.file_uploader("Selecione ou tire a foto do comprovante:", type=["png", "jpg", "jpeg"], key=f"foto_c_{st.session_state['reset_ctr']}")
                 
             if st.button("Enviar para Aprovação", type="primary", use_container_width=True):
-                if quantidade and foto_comprovante:
+                if quantity and foto_comprovante:
                     try:
                         with st.spinner("Enviando foto para o servidor..."):
                             nome_foto_nuvem = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{st.session_state['usuario_atual']}.png"
