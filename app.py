@@ -93,13 +93,18 @@ else:
                 res_coletas = supabase.table("coletas").select("*").execute()
                 res_users = supabase.table("usuarios").select("*").execute()
                 
-                df = pd.DataFrame(res_coletas.data) if res_coletas.data else pd.DataFrame(columns=["id", "data", "coletor", "quantidade", "foto_nome", "status", "valor_total", "pago"])
+                # Alinhado para garantir a leitura correta das fotos independente da variação do nome da coluna
+                df = pd.DataFrame(res_coletas.data) if res_coletas.data else pd.DataFrame(columns=["id", "data", "coletor", "quantidade", "foto_name", "status", "valor_total", "pago"])
+                if not df.empty and "foto_nome" in df.columns and "foto_name" not in df.columns:
+                    df = df.rename(columns={"foto_nome": "foto_name"})
+                elif not df.empty and "foto_name" in df.columns and "foto_nome" not in df.columns:
+                    df["foto_nome"] = df["foto_name"]
+
                 df_users_list = pd.DataFrame(res_users.data) if res_users.data else pd.DataFrame(columns=["usuario", "senha", "nome_completo", "cargo"])
-                
                 lista_coletores = ["Todos"] + df_users_list[df_users_list["cargo"] == "COLETOR"]["nome_completo"].tolist()
             except Exception as e:
                 st.error(f"Erro ao carregar dados do banco: {e}")
-                df = pd.DataFrame(columns=["id", "data", "coletor", "quantidade", "foto_nome", "status", "valor_total", "pago"])
+                df = pd.DataFrame(columns=["id", "data", "coletor", "quantidade", "foto_name", "status", "valor_total", "pago"])
                 lista_coletores = ["Todos"]
             
             st.subheader("🔍 Filtros de Busca")
@@ -139,7 +144,8 @@ else:
                     col1, col2 = st.columns([3, 2])
                     with col1:
                         st.write(f"**Coletor:** {row['coletor']} | **Qtd:** {row['quantidade']} un")
-                        if row['foto_nome']: st.image(row['foto_nome'], width=150)
+                        link_foto = row.get('foto_name') or row.get('foto_nome')
+                        if link_foto: st.image(link_foto, width=150)
                     with col2:
                         if st.button(f"✓ Aprovar", key=f"ap_{row['id']}", type="primary"):
                             supabase.table("coletas").update({"status": "Aprovado"}).eq("id", row["id"]).execute()
@@ -220,14 +226,12 @@ else:
                 coletores_vales = []
             
             if coletores_vales:
-                # Inputs conectados à chave do contador dinâmico para poder limpar após salvar
                 coletor_vale = st.selectbox("Selecione o Coletor para o Vale:", coletores_vales, key=f"sel_vale_{st.session_state['reset_ctr']}")
                 valor_vale_input = st.number_input("Valor do Adiantamento (R$):", min_value=1.0, step=5.0, value=10.0, key=f"val_vale_{st.session_state['reset_ctr']}")
                 data_vale = st.date_input("Data do Vale:", datetime.now(), key=f"dat_vale_{st.session_state['reset_ctr']}")
                 motivo_vale = st.text_input("Observação/Motivo (Opcional):", value="Adiantamento de Coletas", key=f"mot_vale_{st.session_state['reset_ctr']}")
                 
                 if st.button("Lançar Vale", type="primary"):
-                    # Estrutura tratada e corrigida de float para impedir o Postgrest APIError
                     novo_vale = {
                         "data": data_vale.strftime("%Y-%m-%d"),
                         "coletor": str(coletor_vale),
@@ -237,7 +241,6 @@ else:
                     supabase.table("vales_coleta").insert(novo_vale).execute()
                     st.success(f"✅ Vale de R$ {valor_vale_input:.2f} registrado para {coletor_vale}!")
                     
-                    # Limpa os campos do formulário atualizando o contador
                     st.session_state["reset_ctr"] += 1
                     st.rerun()
             else:
@@ -287,16 +290,15 @@ else:
             st.header("Novo Envio")
             st.info(f"Registrando para: **{st.session_state['nome_completo_atual']}**")
             
-            # Inputs dinâmicos para sumirem e limparem após clicar em enviar
             quantidade = st.number_input("Quantidade de aparelhos:", min_value=1, step=1, value=1, key=f"qtd_c_{st.session_state['reset_ctr']}")
-            
-            # Substituição perfeita: Apenas o File Uploader direto (faz foto e galeria nativos no celular)
             foto_comprovante = st.file_uploader("Selecione ou tire a foto do comprovante:", type=["png", "jpg", "jpeg"], key=f"foto_c_{st.session_state['reset_ctr']}")
                 
             if st.button("Enviar para Aprovação", type="primary", use_container_width=True):
                 if quantidade and foto_comprovante:
                     with st.spinner("Enviando foto para o servidor..."):
                         nome_foto_nuvem = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{st.session_state['usuario_atual']}.png"
+                        
+                        # CORRIGIDO: Agora lê os dados da variável correta 'foto_comprovante'
                         conteudo_foto = foto_comprovante.getvalue()
                         
                         # Envia o arquivo para o bucket do Supabase
@@ -321,7 +323,7 @@ else:
                         supabase.table("coletas").insert(novo_registro).execute()
                         st.success("✅ Envio realizado com sucesso!")
                         
-                        # Incrementa o reset para limpar a quantidade e a foto enviada na tela do coletor
+                        # Reseta os valores da tela sem mudar de aba ou deslogar
                         st.session_state["reset_ctr"] += 1
                         st.rerun()
                 else:
@@ -403,7 +405,8 @@ else:
                             with st.expander(f"{status_cor} Data: {row['data']} | Qtd: {row['quantidade']} | {status_pago_txt}"):
                                 st.write(f"**Valor:** R$ {row['valor_total']:.2f}")
                                 st.write(f"**Status da Foto:** {row['status']}")
-                                if row['foto_name']: st.image(row['foto_name'], width=150)
+                                link_foto = row.get('foto_name') or row.get('foto_nome')
+                                if link_foto: st.image(link_foto, width=150)
 
         # 3. VISÃO DE VALES DO COLETOR
         with menu[2]:
