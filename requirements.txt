@@ -2,3 +2,5 @@ supabase
 pandas
 extra-streamlit-components
 uuid
+BytesIO
+PIL
