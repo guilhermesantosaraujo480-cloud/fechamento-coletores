@@ -391,7 +391,7 @@ else:
             foto_comprovante = st.file_uploader("Selecione ou tire a foto do comprovante:", type=["png", "jpg", "jpeg"], key=f"foto_c_{st.session_state['reset_ctr']}")
                 
             if st.button("Enviar para Aprovação", type="primary", use_container_width=True):
-                if quantity and foto_comprovante:
+                if quantidade and foto_comprovante:
                     try:
                         with st.spinner("Processando e compactando imagem..."):
                             img = Image.open(foto_comprovante)
