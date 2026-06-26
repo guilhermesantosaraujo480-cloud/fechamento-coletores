@@ -21,26 +21,23 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
-# ----------------- GERENCIAMENTO DE SESSÃO VIA COOKIES (CORRIGIDO) -----------------
-# Criamos uma sala de espera que muda de chave a cada tentativa, eliminando o erro de "Duplicate Key"
-cookie_manager = stx.CookieManager(key="init")
+# ----------------- GERENCIAMENTO DE SESSÃO VIA COOKIES (ESTÁVEL) -----------------
+# Inicializa o gerenciador UMA única vez com uma chave fixa para evitar duplicidade
+cookie_manager = stx.CookieManager(key="gerenciador_cookies_vivo")
 
+# Aguarda os cookies carregarem de forma assíncrona sem recriar o componente
 if "cookies_carregados" not in st.session_state:
     with st.spinner("Carregando sessão..."):
-        tentativas = 0
-        while tentativas < 10:  # 10 tentativas é o suficiente
-            # Muda a chave interna do componente a cada volta para o Streamlit não reclamar
-            all_cookies = cookie_manager.get_all(key=f"loop_cookie_{tentativas}")
-            if all_cookies:  # Se conseguiu ler os cookies, para o loop
+        for _ in range(10):  # Tenta por até 1 segundo (10 * 0.1s)
+            if cookie_manager.get_all():  # Se o navegador responder com os cookies, para
                 break
             time.sleep(0.1)
-            tentativas += 1
         st.session_state["cookies_carregados"] = True
 
-# Recupera os dados salvos de forma segura (usando chaves fixas agora que o loop passou)
-cookie_usuario = cookie_manager.get(cookie="vivo_coletas_user", key="get_user")
-cookie_nome = cookie_manager.get(cookie="vivo_coletas_nome", key="get_nome")
-cookie_cargo = cookie_manager.get(cookie="vivo_coletas_cargo", key="get_cargo")
+# Recupera os dados salvos sem usar o parâmetro 'key' que causa o TypeError
+cookie_usuario = cookie_manager.get(cookie="vivo_coletas_user")
+cookie_nome = cookie_manager.get(cookie="vivo_coletas_nome")
+cookie_cargo = cookie_manager.get(cookie="vivo_coletas_cargo")
 
 # Gerenciamento de estado de Login
 if "logado" not in st.session_state:
@@ -96,9 +93,9 @@ if not st.session_state["logado"]:
                 
                 # Salva nos cookies do navegador (Expira em 30 dias)
                 valido_ate = datetime.now() + pd.Timedelta(days=30)
-                cookie_manager.set("vivo_coletas_user", user_input, expires_at=valido_ate, key="set_user")
-                cookie_manager.set("vivo_coletas_nome", user_valido[0]["nome_completo"], expires_at=valido_ate, key="set_nome")
-                cookie_manager.set("vivo_coletas_cargo", user_valido[0]["cargo"], expires_at=valido_ate, key="set_cargo")
+                cookie_manager.set("vivo_coletas_user", user_input, expires_at=valido_ate)
+                cookie_manager.set("vivo_coletas_nome", user_valido[0]["nome_completo"], expires_at=valido_ate)
+                cookie_manager.set("vivo_coletas_cargo", user_valido[0]["cargo"], expires_at=valido_ate)
                 
                 st.success(f"Bem-vindo, {st.session_state['nome_completo_atual']}!")
                 time.sleep(0.5)
@@ -123,9 +120,9 @@ else:
             del st.session_state["cookies_carregados"]
         
         # Remove os cookies do navegador
-        cookie_manager.delete("vivo_coletas_user", key="del_user")
-        cookie_manager.delete("vivo_coletas_nome", key="del_nome")
-        cookie_manager.delete("vivo_coletas_cargo", key="del_cargo")
+        cookie_manager.delete("vivo_coletas_user")
+        cookie_manager.delete("vivo_coletas_nome")
+        cookie_manager.delete("vivo_coletas_cargo")
         time.sleep(0.3)
         st.rerun()
 
@@ -133,7 +130,7 @@ else:
     # PERFIL ADMINISTRADOR
     # =========================================================================
     if st.session_state["cargo_atual"] == "ADM":
-        st.subheader("🛡️ Painel do Administrador")
+        st.subheader("🛡️ Painel do Administrator")
         sub_menu_adm = st.tabs(["📋 Gestão de Coletas", "📉 Registrar/Ver Vales", "👤 Cadastrar Usuários"])
         
         with sub_menu_adm[0]:
