@@ -7,12 +7,8 @@ import extra_streamlit_components as stx
 # Configuração da página (otimizada para celular)
 st.set_page_config(page_title="Sistema Vivo Coletas", layout="centered", initial_sidebar_state="collapsed")
 
-# Inicializa o gerenciador de cookies estável que roda na nuvem
-@st.cache_resource
-def get_cookie_manager():
-    return stx.CookieManager()
-
-cookie_manager = get_cookie_manager()
+# Inicializa o gerenciador de cookies sem a tag de cache para não dar aviso
+cookie_manager = stx.CookieManager()
 
 # VALOR PADRÃO POR COLETA
 VALOR_POR_COLETA = 10.0
@@ -404,7 +400,7 @@ else:
                 st.info("Nenhum vale registrado.")
             else:
                 df_v['data_dt'] = pd.to_datetime(df_v['data']).dt.date
-                vales_coletor = df_v[(df_v['vdata_dt'] >= st.session_state["c_filtro_inicio"]) & (df_v['data_dt'] <= st.session_state["c_filtro_fim"])]
+                vales_coletor = df_v[(df_v['data_dt'] >= st.session_state["c_filtro_inicio"]) & (df_v['data_dt'] <= st.session_state["c_filtro_fim"])]
                 
                 if vales_coletor.empty:
                     st.info("Nenhum vale registrado para o período selecionado.")
