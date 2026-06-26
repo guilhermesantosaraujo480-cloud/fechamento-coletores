@@ -21,36 +21,27 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
-# ----------------- GERENCIAMENTO DE SESSÃO VIA COOKIES (ESTÁVEL) -----------------
-# Inicializa o gerenciador UMA única vez com uma chave fixa para evitar duplicidade
+# ----------------- GERENCIAMENTO DE SESSÃO SEGURO -----------------
+# Inicializa o cookie manager de forma estática
 cookie_manager = stx.CookieManager(key="gerenciador_cookies_vivo")
 
-# Aguarda os cookies carregarem de forma assíncrona sem recriar o componente
-if "cookies_carregados" not in st.session_state:
-    with st.spinner("Carregando sessão..."):
-        for _ in range(10):  # Tenta por até 1 segundo (10 * 0.1s)
-            if cookie_manager.get_all():  # Se o navegador responder com os cookies, para
-                break
-            time.sleep(0.1)
-        st.session_state["cookies_carregados"] = True
-
-# Recupera os dados salvos sem usar o parâmetro 'key' que causa o TypeError
-cookie_usuario = cookie_manager.get(cookie="vivo_coletas_user")
-cookie_nome = cookie_manager.get(cookie="vivo_coletas_nome")
-cookie_cargo = cookie_manager.get(cookie="vivo_coletas_cargo")
-
-# Gerenciamento de estado de Login
 if "logado" not in st.session_state:
+    st.session_state["logado"] = False
+    st.session_state["usuario_atual"] = None
+    st.session_state["nome_completo_atual"] = None
+    st.session_state["cargo_atual"] = None
+
+# Tenta recuperar cookies uma única vez se o usuário não estiver logado na sessão ativa
+if not st.session_state["logado"]:
+    cookie_usuario = cookie_manager.get(cookie="vivo_coletas_user")
+    cookie_nome = cookie_manager.get(cookie="vivo_coletas_nome")
+    cookie_cargo = cookie_manager.get(cookie="vivo_coletas_cargo")
+    
     if cookie_usuario and cookie_nome and cookie_cargo:
         st.session_state["logado"] = True
         st.session_state["usuario_atual"] = cookie_usuario
         st.session_state["nome_completo_atual"] = cookie_nome
         st.session_state["cargo_atual"] = cookie_cargo
-    else:
-        st.session_state["logado"] = False
-        st.session_state["usuario_atual"] = None
-        st.session_state["nome_completo_atual"] = None
-        st.session_state["cargo_atual"] = None
 
 if "reset_ctr" not in st.session_state:
     st.session_state["reset_ctr"] = 0
@@ -116,8 +107,6 @@ else:
         st.session_state["usuario_atual"] = None
         st.session_state["nome_completo_atual"] = None
         st.session_state["cargo_atual"] = None
-        if "cookies_carregados" in st.session_state:
-            del st.session_state["cookies_carregados"]
         
         # Remove os cookies do navegador
         cookie_manager.delete("vivo_coletas_user")
@@ -130,7 +119,7 @@ else:
     # PERFIL ADMINISTRADOR
     # =========================================================================
     if st.session_state["cargo_atual"] == "ADM":
-        st.subheader("🛡️ Painel do Administrator")
+        st.subheader("🛡️ Painel do Administrador")
         sub_menu_adm = st.tabs(["📋 Gestão de Coletas", "📉 Registrar/Ver Vales", "👤 Cadastrar Usuários"])
         
         with sub_menu_adm[0]:
@@ -308,7 +297,7 @@ else:
             foto_comprovante = st.file_uploader("Selecione ou tire a foto do comprovante:", type=["png", "jpg", "jpeg"], key=f"foto_c_{st.session_state['reset_ctr']}")
                 
             if st.button("Enviar para Aprovação", type="primary", use_container_width=True):
-                if quantity := quantidade and foto_comprovante:
+                if quantidade and foto_comprovante:  # CORREÇÃO CRÍTICA DO ERRO TYPEERROR
                     try:
                         with st.spinner("Enviando foto para o servidor..."):
                             nome_foto_nuvem = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{st.session_state['usuario_atual']}.png"
@@ -324,10 +313,10 @@ else:
                             novo_registro = {
                                 "data": datetime.now().strftime("%Y-%m-%d"), 
                                 "coletor": st.session_state['nome_completo_atual'], 
-                                "quantidade": int(quantity),
+                                "quantidade": int(quantidade), # Forçado corretamente como valor inteiro puro
                                 "foto_url": foto_url_final, 
                                 "status": "Pendente", 
-                                "valor_total": round(float(quantity * VALOR_POR_COLETA), 2),
+                                "valor_total": round(float(quantidade * VALOR_POR_COLETA), 2),
                                 "pago": False
                             }
                             
