@@ -1,13 +1,14 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+import time
 from supabase import create_client, Client
 import extra_streamlit_components as stx
 
 # Configuração da página (otimizada para celular)
 st.set_page_config(page_title="Sistema Vivo Coletas", layout="centered", initial_sidebar_state="collapsed")
 
-# Inicializa o gerenciador de cookies sem a tag de cache para não dar aviso
+# Inicializa o gerenciador de cookies
 cookie_manager = stx.CookieManager()
 
 # VALOR PADRÃO POR COLETA
@@ -23,12 +24,25 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
-# ----------------- GERENCIAMENTO DE SESSÃO VIA COOKIES -----------------
-# Recupera os dados salvos no navegador do usuário
+# ----------------- CORREÇÃO CRÍTICA PARA O F5 (AGUARDAR COOKIES) -----------------
+# Força o Streamlit a esperar até 1.5 segundos para ler os cookies do navegador antes de decidir se renderiza o login
+if "cookies_carregados" not in st.session_state:
+    with st.spinner("Carregando sessão..."):
+        tentativas = 0
+        while tentativas < 15:  # 15 * 0.1s = 1.5s no máximo
+            all_cookies = cookie_manager.get_all()
+            if all_cookies:  # Se achou qualquer cookie, sai do loop
+                break
+            time.sleep(0.1)
+            tentativas += 1
+        st.session_state["cookies_carregados"] = True
+
+# Recupera os dados salvos nos cookies de forma segura
 cookie_usuario = cookie_manager.get(cookie="vivo_coletas_user")
 cookie_nome = cookie_manager.get(cookie="vivo_coletas_nome")
 cookie_cargo = cookie_manager.get(cookie="vivo_coletas_cargo")
 
+# Gerenciamento de estado de Login
 if "logado" not in st.session_state:
     if cookie_usuario and cookie_nome and cookie_cargo:
         st.session_state["logado"] = True
@@ -87,6 +101,7 @@ if not st.session_state["logado"]:
                 cookie_manager.set("vivo_coletas_cargo", user_valido[0]["cargo"], expires_at=valido_ate)
                 
                 st.success(f"Bem-vindo, {st.session_state['nome_completo_atual']}!")
+                time.sleep(0.5) # Pequena pausa para garantir a gravação do cookie
                 st.rerun()
             else:
                 st.error("Usuário ou senha incorretos.")
@@ -104,11 +119,14 @@ else:
         st.session_state["usuario_atual"] = None
         st.session_state["nome_completo_atual"] = None
         st.session_state["cargo_atual"] = None
+        if "cookies_carregados" in st.session_state:
+            del st.session_state["cookies_carregados"]
         
         # Remove os cookies do navegador
         cookie_manager.delete("vivo_coletas_user")
         cookie_manager.delete("vivo_coletas_nome")
         cookie_manager.delete("vivo_coletas_cargo")
+        time.sleep(0.3)
         st.rerun()
 
     # =========================================================================
