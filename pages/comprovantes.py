@@ -6,8 +6,29 @@ import uuid
 import urllib.parse
 from supabase import create_client, Client
 
-# Configuração da Página (focada em mobile)
-st.set_page_config(page_title="Meus Comprovantes", layout="centered", initial_sidebar_state="collapsed")
+# =========================================================================
+# CONFIGURAÇÃO ESTILO APLICATIVO MÓVEL (MOBILE FIRST)
+# =========================================================================
+st.set_page_config(
+    page_title="Meus Comprovantes", 
+    layout="centered",               # Mantém o conteúdo centralizado igual app
+    initial_sidebar_state="collapsed" # MARCAÇÃO CRUCIAL: Esconde a barra lateral por padrão
+)
+
+# CSS Otimizador para esconder menus nativos e deixar visual limpo de App
+st.markdown("""
+    <style>
+        /* Esconde o botão de Deploy e o menu de 3 pontinhos do topo */
+        #MainMenu, header {visibility: hidden;}
+        footer {visibility: hidden;}
+        
+        /* Ajusta o espaçamento do topo para o conteúdo subir */
+        .block-container {
+            padding-top: 1.5rem;
+            padding-bottom: 1rem;
+        }
+    </style>
+""", unsafe_transform=True)
 
 # ----------------- CONEXÃO COM O SUPABASE -----------------
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
@@ -20,7 +41,6 @@ def init_supabase() -> Client:
 supabase = init_supabase()
 
 # ----------------- TRAVA DE SEGURANÇA / TELA DE LOGIN -----------------
-# Se o usuário não veio logado do app.py, exigimos o login aqui dentro também
 if "logado" not in st.session_state or not st.session_state["logado"]:
     st.warning("🔒 Esta página é restrita. Por favor, faça o login para continuar.")
     
@@ -33,11 +53,9 @@ if "logado" not in st.session_state or not st.session_state["logado"]:
             user_valido = resposta.data
             
             if user_valido:
-                # Se for ADM, podemos escolher bloquear ou deixar passar (aqui deixei passar se você quiser fiscalizar)
                 novo_token = str(uuid.uuid4())
                 supabase.table("usuarios").update({"session_token": novo_token}).eq("id", user_valido[0]["id"]).execute()
                 
-                # Salva o estado de login global do sistema
                 st.session_state["logado"] = True
                 st.session_state["usuario_atual"] = user_input
                 st.session_state["nome_completo_atual"] = user_valido[0]["nome_completo"]
@@ -52,39 +70,36 @@ if "logado" not in st.session_state or not st.session_state["logado"]:
         except Exception as e:
             st.error(f"Erro ao conectar com o banco de dados: {e}")
             
-    # Trava a execução do restante do código caso não esteja logado
     st.stop()
 
-
 # =========================================================================
-# SE CHEGOU AQUI, SIGNIFICA QUE ESTÁ LOGADO (O CÓDIGO DA BUSCA RODA ABAIXO)
+# SE CHEGOU AQUI, SIGNIFICA QUE ESTÁ LOGADO
 # =========================================================================
 
-# Se o usuário logado for um ADM e você quiser que apenas COLETORES usem essa página:
 if st.session_state["cargo_atual"] == "ADM":
-    st.info("🛡️ Olá, Administrador! Esta página é destinada aos coletores, mas você pode visualizar e testar o funcionamento abaixo.")
+    st.info("🛡️ Olá, Administrador! Modo de visualização de testes ativado.")
 
-st.title("📄 Meus Comprovantes de Coleta")
+st.title("📄 Comprovantes de Coleta")
 st.write(f"👤 Coletor: **{st.session_state['nome_completo_atual']}**")
 st.markdown("---")
 
-# Botão de Sair rápido
-if st.button("🚪 Sair do Sistema", use_container_width=False):
-    try:
-        supabase.table("usuarios").update({"session_token": None}).eq("usuario", st.session_state["usuario_atual"]).execute()
-    except:
-        pass
-    st.query_params.clear()
-    st.session_state["logado"] = False
-    st.session_state["usuario_atual"] = None
-    st.session_state["nome_completo_atual"] = None
-    st.session_state["cargo_atual"] = None
-    st.rerun()
+# Botão de Sair em formato menor, alinhado à direita
+col_vazia, col_sair = st.columns([2, 1])
+with col_sair:
+    if st.button("🚪 Sair do App", use_container_width=True):
+        try:
+            supabase.table("usuarios").update({"session_token": None}).eq("usuario", st.session_state["usuario_atual"]).execute()
+        except:
+            pass
+        st.query_params.clear()
+        st.session_state["logado"] = False
+        st.session_state["usuario_atual"] = None
+        st.session_state["nome_completo_atual"] = None
+        st.session_state["cargo_atual"] = None
+        st.rerun()
 
 st.subheader("🔍 Localizar Comprovante")
-
-# Campo de busca único por Cliente ou OS
-termo_busca = st.text_input("Digite o Nome do Cliente ou o Número da OS:", placeholder="Ex: 10542 ou João Silva").strip()
+termo_busca = st.text_input("Digite a OS ou Nome do Cliente:", placeholder="Ex: 10542...").strip()
 
 if termo_busca:
     try:
@@ -92,9 +107,9 @@ if termo_busca:
         dados = resposta.data
         
         if not dados:
-            st.info("ℹ️ Nenhum comprovante encontrado para este termo.")
+            st.info("ℹ️ Nenhum comprovante encontrado.")
         else:
-            st.success(f"🎉 Encontrado(s) {len(dados)} comprovante(s):")
+            st.success(f"🎉 Encontrado(s) {len(dados)} item(ns):")
             
             for registro in dados:
                 with st.container():
@@ -119,9 +134,9 @@ if termo_busca:
                         mensagem_codificada = urllib.parse.quote(mensagem_zap)
                         link_whatsapp = f"https://api.whatsapp.com/send?text={mensagem_codificada}"
                         
-                        st.link_button("🟢 Enviar no Whats", link_whatsapp, use_container_width=True)
+                        st.link_button("🟢 Enviar WhatsApp", link_whatsapp, use_container_width=True)
                 st.markdown("---")
     except Exception as e:
-        st.error(f"Erro ao conectar na base de dados: {e}")
+        st.error(f"Erro na base de dados: {e}")
 else:
-    st.info("💡 Digite o número da OS ou o nome do cliente acima para pesquisar.")
+    st.info("💡 Digite os dados acima para pesquisar.")
