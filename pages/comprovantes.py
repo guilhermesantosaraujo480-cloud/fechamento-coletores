@@ -11,24 +11,26 @@ from supabase import create_client, Client
 # =========================================================================
 st.set_page_config(
     page_title="Meus Comprovantes", 
-    layout="centered",               # Mantém o conteúdo centralizado igual app
-    initial_sidebar_state="collapsed" # MARCAÇÃO CRUCIAL: Esconde a barra lateral por padrão
+    layout="centered",               # Mantém o conteúdo em formato de bloco centralizado
+    initial_sidebar_state="collapsed" # Esconde a barra lateral por padrão
 )
 
-# CSS Otimizador para esconder menus nativos e deixar visual limpo de App
+# CORREÇÃO: Usando 'unsafe_allow_html=True' para aplicar o visual de App limpo
 st.markdown("""
     <style>
         /* Esconde o botão de Deploy e o menu de 3 pontinhos do topo */
-        #MainMenu, header {visibility: hidden;}
+        #MainMenu, header, [data-testid="stHeader"] {visibility: hidden;}
         footer {visibility: hidden;}
         
-        /* Ajusta o espaçamento do topo para o conteúdo subir */
+        /* Remove espaços excessivos nas laterais e topo para parecer tela de celular */
         .block-container {
-            padding-top: 1.5rem;
-            padding-bottom: 1rem;
+            padding-top: 1rem !important;
+            padding-bottom: 1rem !important;
+            max-width: 450px !important; /* Limita a largura padrão estilo tela de smartphone */
+            margin: 0 auto;
         }
     </style>
-""", unsafe_transform=True)
+""", unsafe_allow_html=True)
 
 # ----------------- CONEXÃO COM O SUPABASE -----------------
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
@@ -77,13 +79,12 @@ if "logado" not in st.session_state or not st.session_state["logado"]:
 # =========================================================================
 
 if st.session_state["cargo_atual"] == "ADM":
-    st.info("🛡️ Olá, Administrador! Modo de visualização de testes ativado.")
+    st.info("🛡️ Modo Administrador (Visualização de Testes)")
 
-st.title("📄 Comprovantes de Coleta")
+st.title("📄 Comprovantes")
 st.write(f"👤 Coletor: **{st.session_state['nome_completo_atual']}**")
-st.markdown("---")
 
-# Botão de Sair em formato menor, alinhado à direita
+# Botão de Sair compacto
 col_vazia, col_sair = st.columns([2, 1])
 with col_sair:
     if st.button("🚪 Sair do App", use_container_width=True):
@@ -98,6 +99,7 @@ with col_sair:
         st.session_state["cargo_atual"] = None
         st.rerun()
 
+st.markdown("---")
 st.subheader("🔍 Localizar Comprovante")
 termo_busca = st.text_input("Digite a OS ou Nome do Cliente:", placeholder="Ex: 10542...").strip()
 
