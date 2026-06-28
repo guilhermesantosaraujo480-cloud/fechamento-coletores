@@ -520,7 +520,7 @@ else:
             
             if termo_busca:
                 try:
-                    resposta = supabase.table("comprovantes_clientes").select("*").or_(f"cliente.ilike.%{termo_busca}%,ordem_servico.ilike.%{termo_busca}%").order("data_emissao", ascending=False).execute()
+                    resposta = supabase.table("comprovantes_clientes").select("*").or_(f"cliente.ilike.%{termo_busca}%,ordem_servico.ilike.%{termo_busca}%").order("data_emissao", desc=True).execute()
                     dados = resposta.data
                     
                     if not dados:
