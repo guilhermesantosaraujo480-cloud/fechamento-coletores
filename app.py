@@ -6,6 +6,7 @@ import uuid  # Gerador de tokens ultra-seguros
 from supabase import create_client, Client
 from io import BytesIO
 from PIL import Image  # Para a Função 4 (Compactação de fotos)
+import urllib.parse
 
 # Configuração da página (otimizada para celular)
 st.set_page_config(page_title="Sistema Vivo Coletas", layout="centered", initial_sidebar_state="collapsed")
