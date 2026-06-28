@@ -381,7 +381,7 @@ else:
     # PERFIL COLETOR
     # =========================================================================
     else:
-        menu = st.tabs(["📲 Enviar Coleta", "📊 Minhas Coletas", "💰 Meus Vales"])
+        menu = st.tabs(["📲 Enviar Coleta", "📊 Minhas Coletas", "💰 Meus Vales", "📄 Comprovantes"])
 
         with menu[0]:
             st.header("Novo Envio")
@@ -513,7 +513,7 @@ else:
                     if 'data_dt' in vales_coletor.columns:
                         vales_coletor = vales_coletor.drop(columns=['data_dt'])
                     st.dataframe(vales_coletor[["data", "valor_vale", "descricao"]], use_container_width=True)
-                    
+
         with menu[3]:
             st.subheader("🔍 Localizar Comprovante do Cliente")
             termo_busca = st.text_input("Digite a OS ou Nome do Cliente:", placeholder="Ex: 10542...").strip()
