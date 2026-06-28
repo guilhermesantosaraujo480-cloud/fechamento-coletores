@@ -513,3 +513,35 @@ else:
                     if 'data_dt' in vales_coletor.columns:
                         vales_coletor = vales_coletor.drop(columns=['data_dt'])
                     st.dataframe(vales_coletor[["data", "valor_vale", "descricao"]], use_container_width=True)
+                    
+        with menu[3]:
+            st.subheader("🔍 Localizar Comprovante do Cliente")
+            termo_busca = st.text_input("Digite a OS ou Nome do Cliente:", placeholder="Ex: 10542...").strip()
+            
+            if termo_busca:
+                try:
+                    resposta = supabase.table("comprovantes_clientes").select("*").or_(f"cliente.ilike.%{termo_busca}%,ordem_servico.ilike.%{termo_busca}%").order("data_emissao", ascending=False).execute()
+                    dados = resposta.data
+                    
+                    if not dados:
+                        st.info("ℹ️ Nenhum comprovante encontrado.")
+                    else:
+                        st.success(f"🎉 Encontrado(s) {len(dados)} item(ns):")
+                        for registro in dados:
+                            with st.container():
+                                st.markdown(f"### 📋 OS: {registro['ordem_servico']}")
+                                st.markdown(f"**👤 Cliente:** {registro['cliente']}")
+                                data_formatada = datetime.strptime(registro['data_emissao'], '%Y-%m-%d').strftime('%d/%m/%Y')
+                                st.markdown(f"**📅 Emissão:** {data_formatada}")
+                                
+                                url_comprovante = registro['arquivo_url']
+                                col_b1, col_b2 = st.columns(2)
+                                with col_b1:
+                                    st.link_button("📥 Abrir PDF", url_comprovante, use_container_width=True)
+                                with col_b2:
+                                    mensagem_zap = f"Olá! Segue o seu comprovante de coleta referente à *OS {registro['ordem_servico']}*.\n\n🔗 Link:\n{url_comprovante}"
+                                    link_whatsapp = f"https://api.whatsapp.com/send?text={urllib.parse.quote(mensagem_zap)}"
+                                    st.link_button("🟢 WhatsApp", link_whatsapp, use_container_width=True)
+                            st.markdown("---")
+                except Exception as e:
+                    st.error(f"Erro na base de dados: {e}")
