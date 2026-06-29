@@ -276,6 +276,7 @@ else:
                 else:
                     st.metric("Líquido a Pagar", f"R$ {total_liquido:.2f}")
 
+            # --- RECIBO TOTALMENTE ATUALIZADO (VERSÃO ULTRA COMPATÍVEL COM BOTÃO NATIVO) ---
             container_recibo = st.container()
             with container_recibo:
                 if coletor_sel != "Todos":
@@ -296,12 +297,10 @@ else:
                         f"Gerado em: {datetime.now().strftime('%d/%m/%Y às %H:%M')}"
                     )
                     
-                    # Chave dinâmica para limpar o cache visual ao alternar filtros
-                    chave_dinamica_recibo = f"txt_recibo_{coletor_sel}_{data_inicio}_{data_fim}"
-                    st.text_area("📋 Texto do Recibo", value=texto_recibo, height=210, key=chave_dinamica_recibo)
+                    st.markdown("#### 📋 Texto do Recibo (Clique no ícone superior direito para copiar)")
                     
-                    # Botão nativo de clique para copiar o texto gerado acima
-                    st.clipboard_button("📋 Copiar Texto do Recibo", value=texto_recibo, use_container_width=True)
+                    # O st.code já exibe o texto perfeitamente e adiciona o botão de copiar nativo no canto superior direito!
+                    st.code(texto_recibo, language="text")
             
             st.markdown("#### Detalhes dos Aprovados")
             if aprovados_periodo.empty:
