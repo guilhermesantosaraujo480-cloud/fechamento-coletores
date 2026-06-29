@@ -263,16 +263,18 @@ else:
             # Conta Líquida permite ficar negativa se os vales superarem o valor a ser pago
             total_liquido = float(total_nao_pago_adm) - float(total_vales)
             
-            cm1, cm2, cm3 = st.columns(3)
+            # Mudança para 4 Colunas para alinhar o Líquido a Pagar lado a lado com os outros
+            cm1, cm2, cm3, cm4 = st.columns(4)
             cm1.metric("Bruto Período", f"R$ {total_bruto:.2f}")
             cm2.metric("Valor Já Pago", f"R$ {total_ja_pago:.2f}")
             cm3.metric("Desconto Vales (-)", f"R$ {total_vales:.2f}")
             
-            # Exibição do Líquido com tratamento para Cor Vermelha se for negativo
-            if total_liquido < 0:
-                st.markdown(f"<p style='font-size:14px; margin-bottom:0px; color:#888;'>Líquido a Pagar</p><h2 style='color:#FF4B4B; margin-top:0px; font-weight:bold;'>-R$ {abs(total_liquido):.2f}</h2>", unsafe_allow_html=True)
-            else:
-                st.metric("Líquido a Pagar", f"R$ {total_liquido:.2f}")
+            with cm4:
+                # Exibição do Líquido com tratamento para Cor Vermelha se for negativo diretamente na coluna
+                if total_liquido < 0:
+                    st.markdown(f"<p style='font-size:14px; margin-bottom:0px; color:#888;'>Líquido a Pagar</p><h2 style='color:#FF4B4B; margin-top:0px; font-weight:bold; font-size:1.8rem;'>-R$ {abs(total_liquido):.2f}</h2>", unsafe_allow_html=True)
+                else:
+                    st.metric("Líquido a Pagar", f"R$ {total_liquido:.2f}")
             
             container_recibo = st.container()
             with container_recibo:
@@ -564,7 +566,7 @@ else:
                 
                 for item in lista_expander_ordenada:
                     if item["tipo"] == "PREMIACAO":
-                        with st.expander(f"🏅 Data: {item['data']} | Serviço Extra / Premiação"):
+                        with st.expander(f"🏅 Data: {item['data']} | Servicio Extra / Premiação"):
                             st.write(f"**Valor:** R$ {float(item['valor_total']):.2f}")
                             st.write(f"**Descrição:** {item['descricao']}")
                     else:
