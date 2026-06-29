@@ -260,40 +260,32 @@ else:
             total_ja_pago = ja_pagas_lista["valor_total"].sum() if not ja_pagas_lista.empty else 0.0
             total_nao_pago_adm = (nao_pagas_lista["valor_total"].sum() if not nao_pagas_lista.empty else 0.0) + float(total_premiacoes)
             
-            # --- NOVA LÓGICA VISUAL TRANSPARENTE ---
-            # Quanto ele deveria receber pelas coletas tirando os vales
-            saldo_apos_vales = float(total_bruto) - float(total_vales)
-            
-            # O que resta pagar hoje de fato (Descontando o que já foi pago)
+            # --- CORREÇÃO DA LÓGICA FINANCEIRA ---
+            # O líquido real a pagar é: O bruto total do período menos o que já foi pago e menos os vales.
             saldo_calculado = float(total_bruto) - float(total_ja_pago) - float(total_vales)
+            
+            # Se o saldo for menor que zero, significa que o coletor está devendo (Líquido a pagar = 0)
             total_liquido = max(0.0, saldo_calculado)
             
-            # Layout em 4 colunas com nomes muito mais comerciais e fáceis de entender
-            cm1, cm2, cm3, cm4 = st.columns(4)
-            cm1.metric("📱 Total Produzido", f"R$ {total_bruto:.2f}")
-            cm2.metric("📉 Vales Retidos", f"R$ {total_vales:.2f}")
-            cm3.metric("💵 Já Pago (Pix)", f"R$ {total_ja_pago:.2f}")
-            
-            # O Líquido se destaca como o valor final de ação do Administrador
-            cm4.metric("💰 A Pagar Agora", f"R$ {total_liquido:.2f}")
-            
-            # Alerta visual impactante para saldo devedor
+            # Criamos uma mensagem de aviso caso o coletor esteja devendo vales
             if saldo_calculado < 0:
-                st.error(f"🔴 **Atenção:** Este coletor está **DEVENDO R$ {abs(saldo_calculado):.2f}** para a empresa (os vales superaram os ganhos).")
-            elif saldo_calculado == 0 and total_ja_pago > 0:
-                st.success("🟢 **Conta Zerada:** Tudo o que foi coletado já foi pago e os vales foram integralmente abatidos!")
+                st.warning(f"⚠️ Atenção: Este coletor possui um saldo devedor de **R$ {abs(saldo_calculado):.2f}** em vales que superou o valor das coletas deste período!")
 
-            # --- TEXTO DO RECIBO SIMPLIFICADO ---
+            # Exibição idêntica e padronizada das métricas
+            cm1, cm2, cm3, cm4 = st.columns(4)
+            cm1.metric("Bruto Período", f"R$ {total_bruto:.2f}")
+            cm2.metric("Valor Já Pago", f"R$ {total_ja_pago:.2f}")
+            cm3.metric("Desconto Vales (-)", f"R$ {total_vales:.2f}")
+            cm4.metric("Líquido a Pagar", f"R$ {total_liquido:.2f}")
+            
+            # --- TEXTO DO RECIBO ATUALIZADO COM A NOVA LÓGICA ---
             container_recibo = st.container()
             with container_recibo:
                 if coletor_sel != "Todos":
                     total_aparelhos = int(aprovados_periodo["quantidade"].sum()) if not aprovados_periodo.empty else 0
                     
-                    txt_aviso_recibo = ""
-                    if saldo_calculado < 0:
-                        txt_aviso_recibo = f"\n⚠️ *SALDO DEVEDOR PARA O PRÓXIMO MÊS:* R$ {abs(saldo_calculado):.2f}\n"
-                    elif saldo_calculado == 0:
-                        txt_aviso_recibo = f"\n✅ *FECHAMENTO CONCLUÍDO - CONTA ZERADA*\n"
+                    # Se o saldo estiver negativo, avisamos no recibo que o restante a pagar é R$ 0.00
+                    txt_saldo_devedor = f"\n⚠️ *Saldo Devedor (Vales acumulados):* R$ {abs(saldo_calculado):.2f}\n" if saldo_calculado < 0 else ""
                     
                     texto_recibo = (
                         f"*FECHAMENTO DE COLETAS*\n"
@@ -301,19 +293,19 @@ else:
                         f"*Período:* {data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')}\n"
                         f"-----------------------------\n"
                         f"📱 *Total de Aparelhos:* {total_aparelhos} un\n"
-                        f"💰 *Total Produzido:* R$ {total_bruto:.2f}\n"
-                        f"📉 *Desconto de Vales:* R$ {total_vales:.2f}\n"
-                        f"💵 *Valor Já Pago (Pix):* R$ {total_ja_pago:.2f}\n"
+                        f"💰 *Total Bruto Aprovado:* R$ {total_bruto:.2f}\n"
+                        f"💵 *Valor Já Pago:* R$ {total_ja_pago:.2f}\n"
+                        f"📉 *Desconto em Vales:* R$ {total_vales:.2f}"
+                        f"{txt_saldo_devedor}\n"
                         f"-----------------------------\n"
-                        f"💵 *Líquido a Pagar Restante:* R$ {total_liquido:.2f}"
-                        f"{txt_aviso_recibo}"
+                        f"💵 *Líquido à Pagar Restante:* R$ {total_liquido:.2f}\n"
                         f"-----------------------------\n"
                         f"Gerado em: {datetime.now().strftime('%d/%m/%Y às %H:%M')}"
                     )
                     
-                    st.markdown("#### 📋 Texto do Recibo")
+                    st.markdown("#### 📋 Texto do Recibo (Clique no ícone superior direito para copiar)")
                     st.code(texto_recibo, language="text")
-
+                    
             st.markdown("#### Detalhes dos Aprovados")
             if aprovados_periodo.empty:
                 st.info("Nenhuma coleta aprovada neste período.")
