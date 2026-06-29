@@ -321,7 +321,7 @@ else:
                                 st.rerun()
                     st.markdown("---")
 
-        # ----------------- ABA 2: REGISTRAR/VER VALES -----------------
+        # ----------------- ABA 2: REGISTRAR/VER VALES (TOTALMENTE ATUALIZADA) -----------------
         with sub_menu_adm[1]:
             st.subheader("💰 Registrar Vale / Adiantamento")
             coletores_vales = [u["nome_completo"] for u in res_users_data if u.get("cargo") == "COLETOR"]
@@ -332,19 +332,49 @@ else:
                 data_vale = st.date_input("Data do Vale:", datetime.now(), key=f"dat_vale_{st.session_state['reset_ctr']}")
                 motivo_vale = st.text_input("Observação/Motivo (Opcional):", value="Adiantamento de Coletas", key=f"mot_vale_{st.session_state['reset_ctr']}")
                 
+                # NOVO: Upload obrigatório do comprovante do vale
+                foto_vale = st.file_uploader("Selecione ou tire a foto do comprovante do vale:", type=["png", "jpg", "jpeg"], key=f"foto_vale_{st.session_state['reset_ctr']}")
+                
                 if st.button("Lançar Vale", type="primary"):
-                    try:
-                        novo_vale = {
-                            "data": str(data_vale), "coletor": str(coletor_vale).strip(),
-                            "valor_vale": float(valor_vale_input), "descricao": str(motivo_vale).strip()
-                        }
-                        with st.spinner("Salvando..."):
-                            supabase.table("vales_coleta").insert(novo_vale).execute()
-                        st.success(f"✅ Vale de R$ {valor_vale_input:.2f} registrado para {coletor_vale}!")
-                        st.session_state["reset_ctr"] += 1
-                        st.rerun()
-                    except Exception as vale_err:
-                        st.error(f"⚠️ Erro ao salvar o vale no banco: {vale_err}")
+                    if foto_vale: # Validação obrigatória da imagem
+                        try:
+                            with st.spinner("Processando e compactando imagem do vale..."):
+                                # Compactação da imagem seguindo o mesmo padrão de aparelhos
+                                img = Image.open(foto_vale)
+                                img.thumbnail((1024, 1024))
+                                
+                                buffer_memoria = BytesIO()
+                                img.save(buffer_memoria, format="JPEG", quality=75, optimize=True)
+                                conteudo_foto = buffer_memoria.getvalue()
+                                
+                                nome_foto_nuvem = f"vale_{datetime.now().strftime('%Y%m%d%H%M%S')}_{st.session_state['usuario_atual']}.jpg"
+                                
+                                # Upload para o storage existente
+                                supabase.storage.from_("comprovantes").upload(
+                                    path=nome_foto_nuvem, file=conteudo_foto,
+                                    file_options={"content-type": "image/jpeg"}
+                                )
+                                
+                                foto_url_final = supabase.storage.from_("comprovantes").get_public_url(nome_foto_nuvem)
+                                
+                                novo_vale = {
+                                    "data": str(data_vale), 
+                                    "coletor": str(coletor_vale).strip(),
+                                    "valor_vale": float(valor_vale_input), 
+                                    "descricao": str(motivo_vale).strip(),
+                                    "foto_url": foto_url_final # Salvando a URL no banco
+                                }
+                                
+                                with st.spinner("Salvando no banco de dados..."):
+                                    supabase.table("vales_coleta").insert(novo_vale).execute()
+                                
+                                st.success(f"✅ Vale de R$ {valor_vale_input:.2f} registrado com sucesso para {coletor_vale}!")
+                                st.session_state["reset_ctr"] += 1
+                                st.rerun()
+                        except Exception as vale_err:
+                            st.error(f"⚠️ Erro ao salvar o vale no banco: {vale_err}")
+                    else:
+                        st.error("⚠️ Por favor, adicione a foto do comprovante do vale antes de lançar.")
             else:
                 st.info("Nenhum coletor cadastrado para receber vales.")
                 
@@ -352,11 +382,14 @@ else:
             st.subheader("📋 Histórico de Vales Emitidos")
             
             st.markdown("#### 🔍 Filtrar Histórico de Vales")
-            col_v1, col_v2 = st.columns(2)
+            col_v1, col_v2, col_v3 = st.columns(3)
             with col_v1:
                 v_data_ini = st.date_input("De (Vale):", value=st.session_state["v_adm_filtro_inicio"], key="v_adm_ini")
             with col_v2:
                 v_data_fim = st.date_input("Até (Vale):", value=st.session_state["v_adm_filtro_fim"], key="v_adm_fim")
+            with col_v3:
+                # NOVO: Filtro por coletor na tela de histórico de vales
+                coletor_vale_sel = st.selectbox("Filtrar por Coletor (Vales):", lista_coletores, key="v_adm_coletor_filtro")
             
             st.session_state["v_adm_filtro_inicio"] = v_data_ini
             st.session_state["v_adm_filtro_fim"] = v_data_fim
@@ -364,19 +397,27 @@ else:
             if not df_bruto_vales.empty:
                 df_bruto_vales['data_dt'] = pd.to_datetime(df_bruto_vales['data']).dt.date
                 vales_filtrados_historico = df_bruto_vales[(df_bruto_vales['data_dt'] >= v_data_ini) & (df_bruto_vales['data_dt'] <= v_data_fim)].copy()
+                
+                # Aplica o filtro de coletor se não for "Todos"
+                if coletor_vale_sel != "Todos":
+                    vales_filtrados_historico = vales_filtrados_historico[vales_filtrados_historico["coletor"] == coletor_vale_sel]
             else:
                 vales_filtrados_historico = df_bruto_vales.copy()
 
             if vales_filtrados_historico.empty:
-                st.info("Nenhum vale encontrado para o período de vales selecionado.")
+                st.info("Nenhum vale encontrado para os filtros selecionados.")
             else:
                 st.metric("Total de Vales Listados", f"R$ {vales_filtrados_historico['valor_vale'].sum():.2f}")
-                if 'data_dt' in vales_filtrados_historico.columns:
-                    vales_exibicao = vales_filtrados_historico.drop(columns=['data_dt'])
-                else:
-                    vales_exibicao = vales_filtrados_historico.copy()
                 
-                st.dataframe(vales_exibicao[["data", "coletor", "valor_vale", "descricao"]].sort_values(by="data", ascending=False), use_container_width=True)
+                # NOVO: Exibição em formato igual ao de equipamentos (Expander com foto e detalhes)
+                for idx, row in vales_filtrados_historico.sort_values(by="data", ascending=False).iterrows():
+                    with st.expander(f"📉 Data: {row['data']} | Coletor: {row['coletor']} | Valor: R$ {float(row['valor_vale']):.2f}"):
+                        st.write(f"**Descrição/Motivo:** {row['descricao']}")
+                        link_foto_vale = row.get('foto_url')
+                        if link_foto_vale:
+                            st.image(link_foto_vale, width=200, caption="Comprovante do Vale")
+                        else:
+                            st.caption("⚠️ Este vale antigo não possui foto de comprovante.")
 
         # ----------------- ABA 3: SERVIÇOS/PREMIAÇÕES (ADICIONADA) -----------------
         with sub_menu_adm[2]:
@@ -590,13 +631,14 @@ else:
                                 link_foto = item['foto_url']
                                 if link_foto: st.image(link_foto, width=150)
 
+        # ----------------- ABA 3: MEUS VALES DO COLETOR (ATUALIZADA) -----------------
         with menu[2]:
             st.header("🔑 Meus Adiantamentos (Vales)")
             try:
                 res_vales_c2 = supabase.table("vales_coleta").select("*").eq("coletor", st.session_state['nome_completo_atual']).execute()
-                df_v = pd.DataFrame(res_vales_c2.data) if res_vales_c2.data else pd.DataFrame(columns=["data", "valor_vale", "descricao"])
+                df_v = pd.DataFrame(res_vales_c2.data) if res_vales_c2.data else pd.DataFrame(columns=["data", "valor_vale", "descricao", "foto_url"])
             except Exception:
-                df_v = pd.DataFrame(columns=["data", "valor_vale", "descricao"])
+                df_v = pd.DataFrame(columns=["data", "valor_vale", "descricao", "foto_url"])
                 
             if df_v.empty:
                 st.info("Nenhum vale registrado.")
@@ -608,9 +650,16 @@ else:
                     st.info("Nenhum vale registrado para o período selecionado.")
                 else:
                     st.metric("Total em Vales no Período", f"R$ {vales_coletor['valor_vale'].sum():.2f}")
-                    if 'data_dt' in vales_coletor.columns:
-                        vales_coletor = vales_coletor.drop(columns=['data_dt'])
-                    st.dataframe(vales_coletor[["data", "valor_vale", "descricao"]], use_container_width=True)
+                    
+                    # NOVO: Exibição no painel do coletor com suporte a visualização de imagem
+                    for idx, row in vales_coletor.sort_values(by="data", ascending=False).iterrows():
+                        with st.expander(f"📉 Data: {row['data']} | Valor: R$ {float(row['valor_vale']):.2f}"):
+                            st.write(f"**Descrição:** {row['descricao']}")
+                            link_foto_vale_c = row.get('foto_url')
+                            if link_foto_vale_c:
+                                st.image(link_foto_vale_c, width=180, caption="Comprovante do Adiantamento")
+                            else:
+                                st.caption("Sem foto anexada para este registro.")
 
         with menu[3]:
             st.subheader("🔍 Localizar Comprovante do Cliente")
