@@ -315,7 +315,7 @@ else:
                                 st.rerun()
                     st.markdown("---")
 
-        # ----------------- ABA 2: REGISTRAR/VER VALES -----------------
+# ----------------- ABA 2: REGISTRAR/VER VALES -----------------
         with sub_menu_adm[1]:
             st.subheader("💰 Registrar Vale / Adiantamento")
             coletores_vales = [u["nome_completo"] for u in res_users_data if u.get("cargo") == "COLETOR"]
@@ -350,8 +350,7 @@ else:
                                     "valor_vale": float(valor_vale_input), "descricao": str(motivo_vale).strip(),
                                     "foto_url": foto_url_final
                                 }
-                                with st.spinner("Salvando..."):
-                                    supabase.table("vales_coleta").insert(novo_vale).execute()
+                                supabase.table("vales_coleta").insert(novo_vale).execute()
                             st.success(f"✅ Vale de R$ {valor_vale_input:.2f} registrado para {coletor_vale}!")
                             st.session_state["reset_ctr"] += 1
                             st.rerun()
@@ -392,7 +391,6 @@ else:
             else:
                 st.metric("Total de Vales Listados", f"R$ {vales_filtrados_historico['valor_vale'].sum():.2f}")
                 
-                # Exibição detalhada em lista para suportar o link das fotos mantendo o padrão visual
                 for idx_v, row_v in vales_filtrados_historico.sort_values(by="data", ascending=False).iterrows():
                     st.write(f"📅 **Data:** {row_v['data']} | **Coletor:** {row_v['coletor']} | **Valor:** R$ {float(row_v['valor_vale']):.2f}")
                     st.write(f"📝 **Descrição:** {row_v['descricao']}")
