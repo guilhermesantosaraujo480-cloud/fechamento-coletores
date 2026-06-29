@@ -641,5 +641,3 @@ else:
                                     link_whatsapp = f"https://api.whatsapp.com/send?text={urllib.parse.quote(mensagem_zap)}"
                                     st.link_button("🟢 Enviar WhatsApp", link_whatsapp, use_container_width=True)
                             st.markdown("---")
-
-                            #e
