@@ -268,8 +268,7 @@ else:
             cm1.metric("Bruto Período", f"R$ {total_bruto:.2f}")
             cm2.metric("Valor Já Pago", f"R$ {total_ja_pago:.2f}")
             cm3.metric("Desconto Vales (-)", f"R$ {total_vales:.2f}")
-            cm4.metric("Líquido a Pagar", f"R$ {total_liquido:.2f}")
-
+            
             with cm4:
                 # Exibição do Líquido com tratamento para Cor Vermelha se for negativo diretamente na coluna
                 if total_liquido < 0:
@@ -530,10 +529,6 @@ else:
             total_liquido_coletor = float(total_nao_pago_c) - float(vales_dele)
             
             c1, c2, c3 = st.columns(3)
-            c1.metric("Líquido a Receber", f"R$ {total_liquido_coletor:.2f}")
-            c2.metric("Vales no Período (-)", f"R$ {vales_dele:.2f}")
-            c3.metric("Valor Já Pago", f"R$ {total_ja_pago_c:.2f}")
-            
             with c1:
                 if total_liquido_coletor < 0:
                     st.markdown(f"<p style='font-size:14px; margin-bottom:0px; color:#888;'>Líquido a Receber</p><h3 style='color:#FF4B4B; margin-top:0px; font-weight:bold;'>-R$ {abs(total_liquido_coletor):.2f}</h3>", unsafe_allow_html=True)
