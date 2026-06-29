@@ -162,7 +162,7 @@ else:
             df_bruto_premiacoes = pd.DataFrame(columns=["id", "data", "coletor", "valor_premiacao", "descricao"])
             lista_coletores = ["Todos"]
 
-        # Abas de Navegação do ADM
+        # Abas de Navegação do ADM (Acrescentada a nova aba de Serviços/Premiações)
         sub_menu_adm = st.tabs(["📋 Gestão de Coletas", "📉 Registrar/Ver Vales", "🏅 Serviços/Premiações", "👤 Cadastrar Usuários"])
         
         # ----------------- ABA 1: GESTÃO DE COLETAS -----------------
@@ -175,11 +175,10 @@ else:
             with col_f2:
                 data_fim = st.date_input("Data Fim:", key="input_data_fim")
             with col_f3:
-                # Evita falha se o coletor sumir da lista
                 idx_default = lista_coletores.index(st.session_state["input_coletor_sel"]) if st.session_state["input_coletor_sel"] in lista_coletores else 0
                 coletor_sel = st.selectbox("Filtrar por Coletor:", lista_coletores, index=idx_default, key="input_coletor_sel")
 
-            # --- BOTÃO LIMPAR FILTROS DE COLETAS (CORRIGIDO VIA CALLBACK SAFELY) ---
+            # --- BOTÃO LIMPAR FILTROS DE COLETAS ---
             st.button("❌ Limpar Filtros de Coletas", on_click=limpar_filtros_callback, use_container_width=True)
 
             st.markdown("---")
@@ -259,11 +258,13 @@ else:
             st.subheader("💵 Fechamento Financeiro")
             total_vales = vales_financeiro["valor_vale"].sum() if not vales_financeiro.empty else 0.0
             total_premiacoes = premiacoes_financeiro["valor_premiacao"].sum() if not premiacoes_financeiro.empty else 0.0
+            
+            # Dinâmica solicitada: Somar as premiações diretamente no valor Bruto
             total_bruto = (aprovados_periodo["valor_total"].sum() if not aprovados_periodo.empty else 0.0) + float(total_premiacoes)
             total_ja_pago = ja_pagas_lista["valor_total"].sum() if not ja_pagas_lista.empty else 0.0
             total_nao_pago_adm = (nao_pagas_lista["valor_total"].sum() if not nao_pagas_lista.empty else 0.0) + float(total_premiacoes)
             
-            # Conta correta: Do total que falta pagar, desconta os vales pendentes
+            # Conta correta: Do total que falta pagar (incluindo prêmios), desconta os vales
             total_liquido = float(total_nao_pago_adm) - float(total_vales)
             
             cm1, cm2, cm3 = st.columns(3)
@@ -271,12 +272,13 @@ else:
             cm2.metric("Valor Já Pago", f"R$ {total_ja_pago:.2f}")
             cm3.metric("Desconto Vales (-)", f"R$ {total_vales:.2f}")
             
+            # Dinâmica solicitada: Se o líquido for negativo, mostra em vermelho com sinal de menos
             if total_liquido < 0:
                 st.markdown(f"<p style='font-size:14px; margin-bottom:0px; color:#888;'>Líquido a Pagar</p><h2 style='color:#FF4B4B; margin-top:0px; font-weight:normal;'>-R$ {abs(total_liquido):.2f}</h2>", unsafe_allow_html=True)
             else:
                 st.metric("Líquido a Pagar", f"R$ {total_liquido:.2f}")
             
-            # --- RECIBO AJUSTADO WITH CHAVE DINÂMICA (CORRIGE O CACHE AO MUDAR COLETOR) ---
+            # --- RECIBO AJUSTADO WITH CHAVE DINÂMICA ---
             container_recibo = st.container()
             with container_recibo:
                 if coletor_sel != "Todos":
@@ -292,7 +294,6 @@ else:
                         f"-----------------------------\n"
                         f"Gerado em: {datetime.now().strftime('%d/%m/%Y às %H:%M')}"
                     )
-                    # A chave abaixo muda automaticamente sempre que o coletor ou datas mudarem, limpando o cache visual!
                     chave_dinamica_recibo = f"txt_recibo_{coletor_sel}_{data_inicio}_{data_fim}"
                     st.text_area("📋 Texto do Recibo (Pronto para copiar)", value=texto_recibo, height=180, key=chave_dinamica_recibo)
             
@@ -315,7 +316,7 @@ else:
                                 st.rerun()
                     st.markdown("---")
 
-# ----------------- ABA 2: REGISTRAR/VER VALES -----------------
+        # ----------------- ABA 2: REGISTRAR/VER VALES (COM ANEXO E FILTRO POR COLETOR) -----------------
         with sub_menu_adm[1]:
             st.subheader("💰 Registrar Vale / Adiantamento")
             coletores_vales = [u["nome_completo"] for u in res_users_data if u.get("cargo") == "COLETOR"]
@@ -324,6 +325,8 @@ else:
                 coletor_vale = st.selectbox("Selecione o Coletor para o Vale:", coletores_vales, key=f"sel_vale_{st.session_state['reset_ctr']}")
                 valor_vale_input = st.number_input("Valor do Adiantamento (R$):", min_value=1.0, step=5.0, value=10.0, key=f"val_vale_{st.session_state['reset_ctr']}")
                 data_vale = st.date_input("Data do Vale:", datetime.now(), key=f"dat_vale_{st.session_state['reset_ctr']}")
+                
+                # Dinâmica solicitada: Campo de anexo igual ao de enviar coleta
                 foto_vale = st.file_uploader("Selecione ou tire a foto do comprovante do vale:", type=["png", "jpg", "jpeg"], key=f"foto_v_{st.session_state['reset_ctr']}")
                 motivo_vale = st.text_input("Observação/Motivo (Opcional):", value="Adiantamento de Coletas", key=f"mot_vale_{st.session_state['reset_ctr']}")
                 
@@ -371,6 +374,7 @@ else:
             with col_v2:
                 v_data_fim = st.date_input("Até (Vale):", value=st.session_state["v_adm_filtro_fim"], key="v_adm_fim")
             with col_v3:
+                # Dinâmica solicitada: Aba/Filtro para filtrar por coletor no histórico de vales também
                 idx_default_v = lista_coletores.index(st.session_state["v_adm_coletor_sel"]) if st.session_state["v_adm_coletor_sel"] in lista_coletores else 0
                 coletor_sel_v = st.selectbox("Filtrar por Coletor (Vale):", lista_coletores, index=idx_default_v, key="v_adm_coletor_sel_input")
             
@@ -561,6 +565,7 @@ else:
                     
                     c1, c2 = st.columns(2)
                     with c1:
+                        # Dinâmica solicitada: Se o líquido for negativo no painel do coletor, mostra vermelho com sinal de menos
                         if total_liquido_coletor < 0:
                             st.markdown(f"<p style='font-size:14px; margin-bottom:0px; color:#888;'>Líquido a Receber</p><h2 style='color:#FF4B4B; margin-top:0px; font-weight:normal;'>-R$ {abs(total_liquido_coletor):.2f}</h2>", unsafe_allow_html=True)
                         else:
@@ -572,7 +577,7 @@ else:
                     
                     st.markdown("### Envios do Período")
                     
-                    # Exibição das premiações/metas inseridas no meio dos envios do período
+                    # Dinâmica solicitada: Adicionar as premiações e datas juntas aos lançamentos de coletas que ele faz
                     if not df_premiacoes_c.empty:
                         dados_premios_filtrados = df_premiacoes_c[(df_premiacoes_c['data_dt'] >= c_data_ini) & (df_premiacoes_c['data_dt'] <= c_data_fim)]
                         for idx_p, row_p in dados_premios_filtrados.iterrows():
