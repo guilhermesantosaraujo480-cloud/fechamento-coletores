@@ -275,24 +275,33 @@ else:
                     st.markdown(f"<p style='font-size:14px; margin-bottom:0px; color:#888;'>Líquido a Pagar</p><h2 style='color:#FF4B4B; margin-top:0px; font-weight:bold; font-size:1.8rem;'>-R$ {abs(total_liquido):.2f}</h2>", unsafe_allow_html=True)
                 else:
                     st.metric("Líquido a Pagar", f"R$ {total_liquido:.2f}")
-            
+
             container_recibo = st.container()
             with container_recibo:
                 if coletor_sel != "Todos":
+                    # Calcula o total de aparelhos coletados e aprovados no período
+                    total_aparelhos = int(aprovados_periodo["quantidade"].sum()) if not aprovados_periodo.empty else 0
+                    
                     texto_recibo = (
                         f"*FECHAMENTO DE COLETAS*\n"
                         f"*Coletor:* {coletor_sel}\n"
                         f"*Período:* {data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')}\n"
                         f"-----------------------------\n"
-                        f"💰 *Total Bruto Aprovado (com prêmios):* R$ {total_bruto:.2f}\n"
+                        f"📱 *Total de Aparelhos:* {total_aparelhos} un\n"
+                        f"💰 *Total Bruto Aprovado:* R$ {total_bruto:.2f}\n"
                         f"💵 *Valor Já Pago:* R$ {total_ja_pago:.2f}\n"
                         f"📉 *Desconto em Vales:* R$ {total_vales:.2f}\n"
-                        f"💵 *Líquido à Pagar Restante:* {'-' if total_liquido < 0 else ''}R$ {abs(total_liquido):.2f}\n"
+                        f"💵 *Líquido à Pagar Restante:* R$ {total_liquido:.2f}\n"
                         f"-----------------------------\n"
                         f"Gerado em: {datetime.now().strftime('%d/%m/%Y às %H:%M')}"
                     )
+                    
+                    # Chave dinâmica para limpar o cache visual ao alternar filtros
                     chave_dinamica_recibo = f"txt_recibo_{coletor_sel}_{data_inicio}_{data_fim}"
-                    st.text_area("📋 Texto do Recibo (Pronto para copiar)", value=texto_recibo, height=180, key=chave_dinamica_recibo)
+                    st.text_area("📋 Texto do Recibo", value=texto_recibo, height=210, key=chave_dinamica_recibo)
+                    
+                    # Botão nativo de clique para copiar o texto gerado acima
+                    st.clipboard_button("📋 Copiar Texto do Recibo", value=texto_recibo, use_container_width=True)
             
             st.markdown("#### Detalhes dos Aprovados")
             if aprovados_periodo.empty:
