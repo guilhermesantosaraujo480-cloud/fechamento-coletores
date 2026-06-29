@@ -260,28 +260,32 @@ else:
             total_ja_pago = ja_pagas_lista["valor_total"].sum() if not ja_pagas_lista.empty else 0.0
             total_nao_pago_adm = (nao_pagas_lista["valor_total"].sum() if not nao_pagas_lista.empty else 0.0) + float(total_premiacoes)
             
-            # Conta Líquida permite ficar negativa se os vales superarem o valor a ser pago
-            total_liquido = float(total_nao_pago_adm) - float(total_vales)
+            # --- CORREÇÃO DA LÓGICA FINANCEIRA ---
+            # O líquido real a pagar é: O bruto total do período menos o que já foi pago e menos os vales.
+            saldo_calculado = float(total_bruto) - float(total_ja_pago) - float(total_vales)
             
-            # Mudança para 4 Colunas para alinhar o Líquido a Pagar lado a lado com os outros
+            # Se o saldo for menor que zero, significa que o coletor está devendo (Líquido a pagar = 0)
+            total_liquido = max(0.0, saldo_calculado)
+            
+            # Criamos uma mensagem de aviso caso o coletor esteja devendo vales
+            if saldo_calculado < 0:
+                st.warning(f"⚠️ Atenção: Este coletor possui um saldo devedor de **R$ {abs(saldo_calculado):.2f}** em vales que superou o valor das coletas deste período!")
+
+            # Exibição idêntica e padronizada das métricas
             cm1, cm2, cm3, cm4 = st.columns(4)
             cm1.metric("Bruto Período", f"R$ {total_bruto:.2f}")
             cm2.metric("Valor Já Pago", f"R$ {total_ja_pago:.2f}")
             cm3.metric("Desconto Vales (-)", f"R$ {total_vales:.2f}")
+            cm4.metric("Líquido a Pagar", f"R$ {total_liquido:.2f}")
             
-            with cm4:
-                # Exibição do Líquido com tratamento para Cor Vermelha se for negativo diretamente na coluna
-                if total_liquido < 0:
-                    st.markdown(f"<p style='font-size:14px; margin-bottom:0px; color:#888;'>Líquido a Pagar</p><h2 style='color:#FF4B4B; margin-top:0px; font-weight:bold; font-size:1.8rem;'>-R$ {abs(total_liquido):.2f}</h2>", unsafe_allow_html=True)
-                else:
-                    st.metric("Líquido a Pagar", f"R$ {total_liquido:.2f}")
-
-            # --- RECIBO TOTALMENTE ATUALIZADO (VERSÃO ULTRA COMPATÍVEL COM BOTÃO NATIVO) ---
+            # --- TEXTO DO RECIBO ATUALIZADO COM A NOVA LÓGICA ---
             container_recibo = st.container()
             with container_recibo:
                 if coletor_sel != "Todos":
-                    # Calcula o total de aparelhos coletados e aprovados no período
                     total_aparelhos = int(aprovados_periodo["quantidade"].sum()) if not aprovados_periodo.empty else 0
+                    
+                    # Se o saldo estiver negativo, avisamos no recibo que o restante a pagar é R$ 0.00
+                    txt_saldo_devedor = f"\n⚠️ *Saldo Devedor (Vales acumulados):* R$ {abs(saldo_calculado):.2f}\n" if saldo_calculado < 0 else ""
                     
                     texto_recibo = (
                         f"*FECHAMENTO DE COLETAS*\n"
@@ -291,17 +295,17 @@ else:
                         f"📱 *Total de Aparelhos:* {total_aparelhos} un\n"
                         f"💰 *Total Bruto Aprovado:* R$ {total_bruto:.2f}\n"
                         f"💵 *Valor Já Pago:* R$ {total_ja_pago:.2f}\n"
-                        f"📉 *Desconto em Vales:* R$ {total_vales:.2f}\n"
+                        f"📉 *Desconto em Vales:* R$ {total_vales:.2f}"
+                        f"{txt_saldo_devedor}\n"
+                        f"-----------------------------\n"
                         f"💵 *Líquido à Pagar Restante:* R$ {total_liquido:.2f}\n"
                         f"-----------------------------\n"
                         f"Gerado em: {datetime.now().strftime('%d/%m/%Y às %H:%M')}"
                     )
                     
                     st.markdown("#### 📋 Texto do Recibo (Clique no ícone superior direito para copiar)")
-                    
-                    # O st.code já exibe o texto perfeitamente e adiciona o botão de copiar nativo no canto superior direito!
                     st.code(texto_recibo, language="text")
-            
+                    
             st.markdown("#### Detalhes dos Aprovados")
             if aprovados_periodo.empty:
                 st.info("Nenhuma coleta aprovada neste período.")
