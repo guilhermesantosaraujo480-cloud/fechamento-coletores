@@ -184,89 +184,60 @@ else:
                 coletor_sel = st.selectbox("Filtrar por Coletor:", lista_coletores, index=idx_default, key="input_coletor_sel")
 
             st.button("❌ Limpar Filtros de Coletas", on_click=limpar_filtros_callback, use_container_width=True)
+
             st.markdown("---")
 
             # Filtragem dos dados de coletas
             if not df_bruto_coletas.empty:
                 df_bruto_coletas['data_dt'] = pd.to_datetime(df_bruto_coletas['data']).dt.date
                 df_filtrado = df_bruto_coletas[(df_bruto_coletas['data_dt'] >= data_inicio) & (df_bruto_coletas['data_dt'] <= data_fim)].copy()
-                if coletor_sel != "Todos": df_filtrado = df_filtrado[df_filtrado["coletor"] == coletor_sel]
-            else: df_filtrado = df_bruto_coletas.copy()
+                if coletor_sel != "Todos":
+                    df_filtrado = df_filtrado[df_filtrado["coletor"] == coletor_sel]
+            else:
+                df_filtrado = df_bruto_coletas.copy()
 
-            # Filtragem de vales
+            # Filtragem de vales paralela para o período
             if not df_bruto_vales.empty:
-                if "pago" not in df_bruto_vales.columns: df_bruto_vales["pago"] = False
                 df_bruto_vales['data_dt'] = pd.to_datetime(df_bruto_vales['data']).dt.date
                 vales_financeiro = df_bruto_vales[(df_bruto_vales['data_dt'] >= data_inicio) & (df_bruto_vales['data_dt'] <= data_fim)].copy()
-                if coletor_sel != "Todos": vales_financeiro = vales_financeiro[vales_financeiro["coletor"] == coletor_sel]
-            else: vales_financeiro = df_bruto_vales.copy()
+                if coletor_sel != "Todos":
+                    vales_financeiro = vales_financeiro[vales_financeiro["coletor"] == coletor_sel]
+            else:
+                vales_financeiro = df_bruto_vales.copy()
 
-            # Filtragem de premiações
+            # Filtragem de premiações para o período
             if not df_bruto_premiacoes.empty:
-                if "pago" not in df_bruto_premiacoes.columns: df_bruto_premiacoes["pago"] = False
                 df_bruto_premiacoes['data_dt'] = pd.to_datetime(df_bruto_premiacoes['data']).dt.date
                 premiacoes_financeiro = df_bruto_premiacoes[(df_bruto_premiacoes['data_dt'] >= data_inicio) & (df_bruto_premiacoes['data_dt'] <= data_fim)].copy()
-                if coletor_sel != "Todos": premiacoes_financeiro = premiacoes_financeiro[premiacoes_financeiro["coletor"] == coletor_sel]
-            else: premiacoes_financeiro = df_bruto_premiacoes.copy()
+                if coletor_sel != "Todos":
+                    premiacoes_financeiro = premiacoes_financeiro[premiacoes_financeiro["coletor"] == coletor_sel]
+            else:
+                premiacoes_financeiro = df_bruto_premiacoes.copy()
 
             aprovados_periodo = df_filtrado[df_filtrado["status"] == "Aprovado"] if not df_filtrado.empty else pd.DataFrame()
-            
-            # --- SEPARAÇÃO DO QUE ESTÁ PENDENTE PARA ZERAR A CONTA ---
-            coletas_pendentes = aprovados_periodo[aprovados_periodo["pago"] != True] if not aprovados_periodo.empty else pd.DataFrame()
-            vales_pendentes = vales_financeiro[vales_financeiro["pago"] != True] if not vales_financeiro.empty else pd.DataFrame()
-            premios_pendentes = premiacoes_financeiro[premiacoes_financeiro["pago"] != True] if not premiacoes_financeiro.empty else pd.DataFrame()
+            nao_pagas_lista = aprovados_periodo[aprovados_periodo["pago"] != True] if not aprovados_periodo.empty else pd.DataFrame()
 
-            # ----------------- NOVO FECHAMENTO FINANCEIRO LÍQUIDO -----------------
-            st.subheader("💵 Fechamento Financeiro (Acerto de Contas)")
-            
-            total_vales_pend = vales_pendentes["valor_vale"].sum() if not vales_pendentes.empty else 0.0
-            total_coletas_pend = coletas_pendentes["valor_total"].sum() if not coletas_pendentes.empty else 0.0
-            total_premios_pend = premios_pendentes["valor_premiacao"].sum() if not premios_pendentes.empty else 0.0
-            
-            total_liquido_pendente = (total_coletas_pend + total_premios_pend) - total_vales_pend
-            
-            cm1, cm2, cm3, cm4 = st.columns(4)
-            cm1.metric("Bruto Pendente", f"R$ {total_coletas_pend:.2f}")
-            cm2.metric("Prêmios Pendentes", f"R$ {total_premios_pend:.2f}")
-            cm3.metric("Vales a Descontar", f"R$ {total_vales_pend:.2f}")
-            cm4.metric("Líquido a Pagar", f"R$ {total_liquido_pendente:.2f}")
-            
-            if total_liquido_pendente < 0:
-                st.error(f"🔴 **Saldo Devedor:** Este coletor está devendo **R$ {abs(total_liquido_pendente):.2f}** (Os vales superaram os ganhos!).")
-            elif total_liquido_pendente == 0:
-                st.success("🟢 **Conta Zerada:** Ninguém deve ninguém neste período.")
-            else:
-                st.info(f"🔵 **Saldo Disponível:** Resta realizar o repasse líquido de **R$ {total_liquido_pendente:.2f}**.")
-
-            # --- BOTÃO DE LIQUIDAÇÃO EM MASSA (O Pulo do Gato) ---
             container_botoes_massa = st.container()
             with container_botoes_massa:
-                tem_pendencias = not coletas_pendentes.empty or not vales_pendentes.empty or not premios_pendentes.empty
-                if coletor_sel != "Todos" and tem_pendencias:
-                    confirma_pagamento = st.checkbox(f"🔒 Desbloquear botão de pagamento para {coletor_sel}", key="chk_confirma")
+                if coletor_sel != "Todos" and not nao_pagas_lista.empty:
+                    confirma_pagamento = st.checkbox(f"🔒 Desbloquear botão de pagamento em massa para {coletor_sel}", key="chk_confirma")
                     if confirma_pagamento:
-                        if st.button(f"💰 Liquidar Período (Zerar Conta de {coletor_sel})", type="primary", use_container_width=True):
-                            with st.spinner("Dando baixa em coletas, vales e premiações..."):
-                                # Dá baixa em tudo para o sistema não cobrar os vales de novo no mês que vem
-                                for cid in coletas_pendentes["id"].tolist():
+                        if st.button(f"💰 Marcar TODAS as Coletas de {coletor_sel} como Pagas", type="primary", use_container_width=True):
+                            with st.spinner(f"Processando pagamento em massa..."):
+                                ids_para_pagar = nao_pagas_lista["id"].tolist()
+                                for cid in ids_para_pagar:
                                     supabase.table("coletas").update({"pago": True}).eq("id", cid).execute()
-                                for vid in vales_pendentes["id"].tolist():
-                                    supabase.table("vales_coleta").update({"pago": True}).eq("id", vid).execute()
-                                for pid in premios_pendentes["id"].tolist():
-                                    supabase.table("premiacoes").update({"pago": True}).eq("id", pid).execute()
-                            st.success(f"✅ Sucesso! O período foi liquidado e a conta está zerada.")
-                            time.sleep(0.5)
+                            st.success(f"✅ Sucesso! {len(ids_para_pagar)} coletas foram pagas.")
+                            time.sleep(0.4)
                             st.rerun()
                     else:
-                        st.button(f"💰 Liquidar Período (Marque a caixa acima)", type="secondary", disabled=True, use_container_width=True)
+                        st.button(f"💰 Marcar TODAS as Coletas de {coletor_sel} como Pagas (Marque a caixa acima)", type="secondary", disabled=True, use_container_width=True)
 
-            # --- DETALHES DAS COLETAS PENDENTES (Para Aprovar) ---
-            st.markdown("---")
-            st.subheader("📋 Coletas Pendentes de Aprovação")
+            st.subheader("📋 Coletas Pendentes no Período")
             pendentes = df_filtrado[df_filtrado["status"] == "Pendente"] if not df_filtrado.empty else pd.DataFrame()
             
             if pendentes.empty:
-                st.info("Nenhuma coleta pendente de aprovação encontrada.")
+                st.info("Nenhuma coleta pendente encontrada.")
             else:
                 for index, row in pendentes.iterrows():
                     col1, col2 = st.columns([3, 2])
@@ -276,35 +247,40 @@ else:
                         if link_foto: st.image(link_foto, width=150)
                     with col2:
                         if st.button(f"✓ Aprovar", key=f"ap_{row['id']}", type="primary"):
-                            supabase.table("coletas").update({"status": "Aprovado"}).eq("id", row["id"]).execute()
+                            with st.spinner("Aprovando..."):
+                                supabase.table("coletas").update({"status": "Aprovado"}).eq("id", row["id"]).execute()
                             st.rerun()
                         if st.button(f"✕ Recusar", key=f"rec_{row['id']}"):
-                            supabase.table("coletas").update({"status": "Recusado"}).eq("id", row["id"]).execute()
+                            with st.spinner("Recusando..."):
+                                supabase.table("coletas").update({"status": "Recusado"}).eq("id", row["id"]).execute()
                             st.rerun()
                     st.markdown("---")
             
-            # ----------------- NOVO FECHAMENTO FINANCEIRO LIMPO -----------------
+            # ----------------- NOVO FECHAMENTO FINANCEIRO SOLICITADO -----------------
             st.subheader("💵 Fechamento Financeiro")
             total_vales = vales_financeiro["valor_vale"].sum() if not vales_financeiro.empty else 0.0
             total_coletas_bruto = aprovados_periodo["valor_total"].sum() if not aprovados_periodo.empty else 0.0
             total_premiacoes = premiacoes_financeiro["valor_premiacao"].sum() if not premiacoes_financeiro.empty else 0.0
             
-            # Ganhos (Aparelhos + Premiações) - Descontos (Vales)
-            total_bruto_geral = float(total_coletas_bruto) + float(total_premiacoes)
-            total_liquido = total_bruto_geral - float(total_vales)
+            # Calcula o que já foi marcado como pago para abater na conta
+            total_ja_pago_adm = aprovados_periodo[aprovados_periodo["pago"] == True]["valor_total"].sum() if not aprovados_periodo.empty else 0.0
             
-            # Organizado em 4 colunas bem dimensionadas para impedir que os valores cortem na tela
-            cm1, cm2, cm3, cm4 = st.columns(4)
+            # LOGICA EXCLUSIVA: Líquido = (Bruto + Premiações) - Vales - Valor Já Pago
+            total_liquido = (float(total_coletas_bruto) + float(total_premiacoes)) - float(total_vales) - float(total_ja_pago_adm)
+            
+            # Cinco métricas para dar visão total ao Administrador
+            cm1, cm2, cm3, cm4, cm5 = st.columns(5)
             cm1.metric("Bruto Aparelhos", f"R$ {total_coletas_bruto:.2f}")
             cm2.metric("Premiações (+)", f"R$ {total_premiacoes:.2f}")
             cm3.metric("Vales (-)", f"R$ {total_vales:.2f}")
-            cm4.metric("Líquido a Pagar", f"R$ {total_liquido:.2f}")
+            cm4.metric("Já Pago (-)", f"R$ {total_ja_pago_adm:.2f}")
+            cm5.metric("Líquido a Pagar", f"R$ {total_liquido:.2f}")
             
             # Alertas Visuais do Saldo
             if total_liquido < 0:
-                st.error(f"🔴 **Saldo Devedor:** Este coletor está devendo **R$ {abs(total_liquido):.2f}** (Os vales superaram os ganhos!).")
+                st.error(f"🔴 **Saldo Geral:** Ficou negativo em **R$ {abs(total_liquido):.2f}** (Verifique se os vales ou pagamentos superaram o bruto).")
             elif total_liquido == 0:
-                st.success("🟢 **Conta Zerada:** O saldo deste período está totalmente zerado.")
+                st.success("🟢 **Conta Zerada:** O saldo atual deste período está 100% quitado e resolvido.")
             else:
                 st.info(f"🔵 **Saldo Disponível:** Resta realizar o repasse líquido de **R$ {total_liquido:.2f}**.")
 
@@ -315,9 +291,7 @@ else:
                     total_aparelhos = int(aprovados_periodo["quantidade"].sum()) if not aprovados_periodo.empty else 0
                     
                     txt_aviso_recibo = ""
-                    if total_liquido < 0:
-                        txt_aviso_recibo = f"\n⚠️ *SALDO DEVEDOR COMPROVADO:* R$ {abs(total_liquido):.2f}\n"
-                    elif total_liquido == 0:
+                    if total_liquido == 0:
                         txt_aviso_recibo = f"\n✅ *CONTA TOTALMENTE QUITADA*\n"
                     
                     texto_recibo = (
@@ -325,12 +299,13 @@ else:
                         f"*Coletor:* {coletor_sel}\n"
                         f"*Período:* {data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')}\n"
                         f"-----------------------------\n"
-                        f"📱 *Total de Aparelhos:* {total_aparelhos} un\n"
-                        f"💰 *Total Aparelhos:* R$ {total_coletas_bruto:.2f}\n"
+                        f"📱 *Total de Aparelhos:* {total_aparelhes if 'total_aparelhes' in locals() else total_aparelhos} un\n"
+                        f"💰 *Total Bruto:* R$ {total_coletas_bruto:.2f}\n"
                         f"🎁 *Premiações/Serviços Extras:* R$ {total_premiacoes:.2f}\n"
                         f"📉 *Desconto em Vales:* R$ {total_vales:.2f}\n"
+                        f"💵 *Histórico Pago no Período:* R$ {total_ja_pago_adm:.2f}\n"
                         f"-----------------------------\n"
-                        f"💵 *Líquido à Pagar Final:* R$ {total_liquido:.2f}"
+                        f"🧮 *Líquido Restante à Pagar:* R$ {total_liquido:.2f}"
                         f"{txt_aviso_recibo}"
                         f"-----------------------------\n"
                         f"Gerado em: {datetime.now().strftime('%d/%m/%Y às %H:%M')}"
@@ -341,7 +316,6 @@ else:
             # --- DETALHES DE COLETAS APROVADAS E PREMIAÇÕES DO PERÍODO UNIFICADAS ---
             st.markdown("#### Detalhes dos Ganhos Aprovados")
             
-            # Unificação e ordenação para exibição conjunta (Coletas Aprovadas + Premiações do Período)
             lista_ganhos_adm = []
             if not aprovados_periodo.empty:
                 for idx, row in aprovados_periodo.iterrows():
@@ -359,7 +333,6 @@ else:
             if not lista_ganhos_adm:
                 st.info("Nenhum ganho aprovado ou premiação encontrada neste período.")
             else:
-                # Exibe ordenando por data mais recente
                 for item in sorted(lista_ganhos_adm, key=lambda x: x["data"], reverse=True):
                     col_p1, col_p2 = st.columns([3, 2])
                     with col_p1:
@@ -389,7 +362,6 @@ else:
                 data_vale = st.date_input("Data do Vale:", datetime.now(), key=f"dat_vale_{st.session_state['reset_ctr']}")
                 motivo_vale = st.text_input("Observação/Motivo (Opcional):", value="Adiantamento de Coletas", key=f"mot_vale_{st.session_state['reset_ctr']}")
                 
-                # Comprovante de imagem obrigatória dos vales funcionando perfeitamente
                 foto_vale = st.file_uploader("Selecione ou tire a foto do comprovante do vale:", type=["png", "jpg", "jpeg"], key=f"foto_vale_{st.session_state['reset_ctr']}")
                 
                 if st.button("Lançar Vale", type="primary"):
@@ -627,13 +599,15 @@ else:
                 total_vales_c = 0.0
             
             aprovadas = dados_coletor[dados_coletor["status"] == "Aprovado"] if not dados_coletor.empty else pd.DataFrame()
+            
+            # Puxa o total bruto de aparelhos aprovados do período (pagos ou não)
+            total_coletas_c = float(aprovadas["valor_total"].sum()) if not aprovadas.empty else 0.0
+            
+            # Calcula o "acumulador" de valor já pago no período
             total_ja_pago_c = float(aprovadas[aprovadas["pago"] == True]["valor_total"].sum()) if not aprovadas.empty else 0.0
             
-            # MATEMÁTICA CORRIGIDA: Coletas Aprovadas que NÃO foram pagas ainda
-            total_coletas_pendentes = float(aprovadas[aprovadas["pago"] != True]["valor_total"].sum()) if not aprovadas.empty else 0.0
-            
-            # Líquido a receber = (Aparelhos pendentes + Premiações) - Vales do período
-            total_liquido_coletor = (total_coletas_pendentes + total_premiacoes_c) - total_vales_c
+            # MATEMÁTICA REAL EXIGIDA: Líquido = (Bruto + Premiações) - Vales - Já Pago
+            total_liquido_coletor = (total_coletas_c + total_premiacoes_c) - total_vales_c - total_ja_pago_c
             
             c1, c2, c3 = st.columns(3)
             with c1:
@@ -644,7 +618,7 @@ else:
             with c2:
                 st.metric("Vales no Período (-)", f"R$ {total_vales_c:.2f}")
             with c3:
-                st.metric("Valor Já Pago", f"R$ {total_ja_pago_c:.2f}")
+                st.metric("Valor Já Pago (-)", f"R$ {total_ja_pago_c:.2f}")
             
             st.markdown("### Envios do Período")
             
