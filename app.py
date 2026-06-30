@@ -184,60 +184,89 @@ else:
                 coletor_sel = st.selectbox("Filtrar por Coletor:", lista_coletores, index=idx_default, key="input_coletor_sel")
 
             st.button("❌ Limpar Filtros de Coletas", on_click=limpar_filtros_callback, use_container_width=True)
-
             st.markdown("---")
 
             # Filtragem dos dados de coletas
             if not df_bruto_coletas.empty:
                 df_bruto_coletas['data_dt'] = pd.to_datetime(df_bruto_coletas['data']).dt.date
                 df_filtrado = df_bruto_coletas[(df_bruto_coletas['data_dt'] >= data_inicio) & (df_bruto_coletas['data_dt'] <= data_fim)].copy()
-                if coletor_sel != "Todos":
-                    df_filtrado = df_filtrado[df_filtrado["coletor"] == coletor_sel]
-            else:
-                df_filtrado = df_bruto_coletas.copy()
+                if coletor_sel != "Todos": df_filtrado = df_filtrado[df_filtrado["coletor"] == coletor_sel]
+            else: df_filtrado = df_bruto_coletas.copy()
 
-            # Filtragem de vales paralela para o período
+            # Filtragem de vales
             if not df_bruto_vales.empty:
+                if "pago" not in df_bruto_vales.columns: df_bruto_vales["pago"] = False
                 df_bruto_vales['data_dt'] = pd.to_datetime(df_bruto_vales['data']).dt.date
                 vales_financeiro = df_bruto_vales[(df_bruto_vales['data_dt'] >= data_inicio) & (df_bruto_vales['data_dt'] <= data_fim)].copy()
-                if coletor_sel != "Todos":
-                    vales_financeiro = vales_financeiro[vales_financeiro["coletor"] == coletor_sel]
-            else:
-                vales_financeiro = df_bruto_vales.copy()
+                if coletor_sel != "Todos": vales_financeiro = vales_financeiro[vales_financeiro["coletor"] == coletor_sel]
+            else: vales_financeiro = df_bruto_vales.copy()
 
-            # Filtragem de premiações para o período
+            # Filtragem de premiações
             if not df_bruto_premiacoes.empty:
+                if "pago" not in df_bruto_premiacoes.columns: df_bruto_premiacoes["pago"] = False
                 df_bruto_premiacoes['data_dt'] = pd.to_datetime(df_bruto_premiacoes['data']).dt.date
                 premiacoes_financeiro = df_bruto_premiacoes[(df_bruto_premiacoes['data_dt'] >= data_inicio) & (df_bruto_premiacoes['data_dt'] <= data_fim)].copy()
-                if coletor_sel != "Todos":
-                    premiacoes_financeiro = premiacoes_financeiro[premiacoes_financeiro["coletor"] == coletor_sel]
-            else:
-                premiacoes_financeiro = df_bruto_premiacoes.copy()
+                if coletor_sel != "Todos": premiacoes_financeiro = premiacoes_financeiro[premiacoes_financeiro["coletor"] == coletor_sel]
+            else: premiacoes_financeiro = df_bruto_premiacoes.copy()
 
             aprovados_periodo = df_filtrado[df_filtrado["status"] == "Aprovado"] if not df_filtrado.empty else pd.DataFrame()
-            nao_pagas_lista = aprovados_periodo[aprovados_periodo["pago"] != True] if not aprovados_periodo.empty else pd.DataFrame()
+            
+            # --- SEPARAÇÃO DO QUE ESTÁ PENDENTE PARA ZERAR A CONTA ---
+            coletas_pendentes = aprovados_periodo[aprovados_periodo["pago"] != True] if not aprovados_periodo.empty else pd.DataFrame()
+            vales_pendentes = vales_financeiro[vales_financeiro["pago"] != True] if not vales_financeiro.empty else pd.DataFrame()
+            premios_pendentes = premiacoes_financeiro[premiacoes_financeiro["pago"] != True] if not premiacoes_financeiro.empty else pd.DataFrame()
 
+            # ----------------- NOVO FECHAMENTO FINANCEIRO LÍQUIDO -----------------
+            st.subheader("💵 Fechamento Financeiro (Acerto de Contas)")
+            
+            total_vales_pend = vales_pendentes["valor_vale"].sum() if not vales_pendentes.empty else 0.0
+            total_coletas_pend = coletas_pendentes["valor_total"].sum() if not coletas_pendentes.empty else 0.0
+            total_premios_pend = premios_pendentes["valor_premiacao"].sum() if not premios_pendentes.empty else 0.0
+            
+            total_liquido_pendente = (total_coletas_pend + total_premios_pend) - total_vales_pend
+            
+            cm1, cm2, cm3, cm4 = st.columns(4)
+            cm1.metric("Bruto Pendente", f"R$ {total_coletas_pend:.2f}")
+            cm2.metric("Prêmios Pendentes", f"R$ {total_premios_pend:.2f}")
+            cm3.metric("Vales a Descontar", f"R$ {total_vales_pend:.2f}")
+            cm4.metric("Líquido a Pagar", f"R$ {total_liquido_pendente:.2f}")
+            
+            if total_liquido_pendente < 0:
+                st.error(f"🔴 **Saldo Devedor:** Este coletor está devendo **R$ {abs(total_liquido_pendente):.2f}** (Os vales superaram os ganhos!).")
+            elif total_liquido_pendente == 0:
+                st.success("🟢 **Conta Zerada:** Ninguém deve ninguém neste período.")
+            else:
+                st.info(f"🔵 **Saldo Disponível:** Resta realizar o repasse líquido de **R$ {total_liquido_pendente:.2f}**.")
+
+            # --- BOTÃO DE LIQUIDAÇÃO EM MASSA (O Pulo do Gato) ---
             container_botoes_massa = st.container()
             with container_botoes_massa:
-                if coletor_sel != "Todos" and not nao_pagas_lista.empty:
-                    confirma_pagamento = st.checkbox(f"🔒 Desbloquear botão de pagamento em massa para {coletor_sel}", key="chk_confirma")
+                tem_pendencias = not coletas_pendentes.empty or not vales_pendentes.empty or not premios_pendentes.empty
+                if coletor_sel != "Todos" and tem_pendencias:
+                    confirma_pagamento = st.checkbox(f"🔒 Desbloquear botão de pagamento para {coletor_sel}", key="chk_confirma")
                     if confirma_pagamento:
-                        if st.button(f"💰 Marcar TODAS as Coletas de {coletor_sel} como Pagas", type="primary", use_container_width=True):
-                            with st.spinner(f"Processando pagamento em massa..."):
-                                ids_para_pagar = nao_pagas_lista["id"].tolist()
-                                for cid in ids_para_pagar:
+                        if st.button(f"💰 Liquidar Período (Zerar Conta de {coletor_sel})", type="primary", use_container_width=True):
+                            with st.spinner("Dando baixa em coletas, vales e premiações..."):
+                                # Dá baixa em tudo para o sistema não cobrar os vales de novo no mês que vem
+                                for cid in coletas_pendentes["id"].tolist():
                                     supabase.table("coletas").update({"pago": True}).eq("id", cid).execute()
-                            st.success(f"✅ Sucesso! {len(ids_para_pagar)} coletas foram pagas.")
-                            time.sleep(0.4)
+                                for vid in vales_pendentes["id"].tolist():
+                                    supabase.table("vales_coleta").update({"pago": True}).eq("id", vid).execute()
+                                for pid in premios_pendentes["id"].tolist():
+                                    supabase.table("premiacoes").update({"pago": True}).eq("id", pid).execute()
+                            st.success(f"✅ Sucesso! O período foi liquidado e a conta está zerada.")
+                            time.sleep(0.5)
                             st.rerun()
                     else:
-                        st.button(f"💰 Marcar TODAS as Coletas de {coletor_sel} como Pagas (Marque a caixa acima)", type="secondary", disabled=True, use_container_width=True)
+                        st.button(f"💰 Liquidar Período (Marque a caixa acima)", type="secondary", disabled=True, use_container_width=True)
 
-            st.subheader("📋 Coletas Pendentes no Período")
+            # --- DETALHES DAS COLETAS PENDENTES (Para Aprovar) ---
+            st.markdown("---")
+            st.subheader("📋 Coletas Pendentes de Aprovação")
             pendentes = df_filtrado[df_filtrado["status"] == "Pendente"] if not df_filtrado.empty else pd.DataFrame()
             
             if pendentes.empty:
-                st.info("Nenhuma coleta pendente encontrada.")
+                st.info("Nenhuma coleta pendente de aprovação encontrada.")
             else:
                 for index, row in pendentes.iterrows():
                     col1, col2 = st.columns([3, 2])
@@ -247,12 +276,10 @@ else:
                         if link_foto: st.image(link_foto, width=150)
                     with col2:
                         if st.button(f"✓ Aprovar", key=f"ap_{row['id']}", type="primary"):
-                            with st.spinner("Aprovando..."):
-                                supabase.table("coletas").update({"status": "Aprovado"}).eq("id", row["id"]).execute()
+                            supabase.table("coletas").update({"status": "Aprovado"}).eq("id", row["id"]).execute()
                             st.rerun()
                         if st.button(f"✕ Recusar", key=f"rec_{row['id']}"):
-                            with st.spinner("Recusando..."):
-                                supabase.table("coletas").update({"status": "Recusado"}).eq("id", row["id"]).execute()
+                            supabase.table("coletas").update({"status": "Recusado"}).eq("id", row["id"]).execute()
                             st.rerun()
                     st.markdown("---")
             
