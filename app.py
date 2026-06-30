@@ -24,6 +24,15 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
+# --- FUNÇÃO AUXILIAR PARA CORRIGIR RETORNO DE URL DO SUPABASE ---
+def extrair_url(foto_obj):
+    """Garante que obteremos uma string de URL válida, mesmo se o Supabase retornar um dicionário"""
+    if not foto_obj:
+        return None
+    if isinstance(foto_obj, dict):
+        return foto_obj.get("publicUrl") or foto_obj.get("public_url") or None
+    return str(foto_obj)
+
 # ----------------- OTIMIZAÇÃO: CACHE PARA LISTAGEM DE USUÁRIOS -----------------\
 @st.cache_data(ttl=600)  # Guarda a lista de usuários por 10 minutos para acelerar o app
 def listar_usuarios_cache():
@@ -241,7 +250,7 @@ else:
                     col1, col2 = st.columns([3, 2])
                     with col1:
                         st.write(f"**Coletor:** {row['coletor']} | **Qtd:** {row['quantidade']} un | **Data:** {row['data']}")
-                        link_foto = row.get('foto_url')
+                        link_foto = extrair_url(row.get('foto_url'))
                         if link_foto: st.image(link_foto, width=150)
                     with col2:
                         if st.button(f"✓ Aprovar", key=f"ap_{row['id']}", type="primary"):
@@ -416,7 +425,7 @@ else:
                 for idx, row in vales_filtrados_historico.sort_values(by="data", ascending=False).iterrows():
                     with st.expander(f"📉 Data: {row['data']} | Coletor: {row['coletor']} | Valor: R$ {float(row['valor_vale']):.2f}"):
                         st.write(f"**Descrição/Motivo:** {row['descricao']}")
-                        link_foto_vale = row.get('foto_url')
+                        link_foto_vale = extrair_url(row.get('foto_url'))
                         if link_foto_vale:
                             st.image(link_foto_vale, width=200, caption="Comprovante do Vale")
                         else:
@@ -474,7 +483,7 @@ else:
                         st.rerun()
 
     # =========================================================================
-    # PERFIL COLETOR (IGUALADO AO MEU ADM POR EXIGÊNCIA)
+    # PERFIL COLETOR
     # =========================================================================
     else:
         menu = st.tabs(["📲 Enviar Coleta", "📊 Minhas Coletas", "💰 Meus Vales", "📄 Comprovantes"])
@@ -631,7 +640,7 @@ else:
                         else:
                             with st.expander(f"{status_cor} Data: {item['data']} | Qtd: {item['quantidade']} | {status_pago_txt}"):
                                 st.write(f"**Valor:** R$ {float(item['valor_total']):.2f}")
-                                link_foto = item['foto_url']
+                                link_foto = extrair_url(item['foto_url'])
                                 if link_foto: st.image(link_foto, width=150)
 
         with menu[2]:
@@ -655,7 +664,7 @@ else:
                     for idx, row in vales_coletor.sort_values(by="data", ascending=False).iterrows():
                         with st.expander(f"📉 Data: {row['data']} | Valor: R$ {float(row['valor_vale']):.2f}"):
                             st.write(f"**Descrição:** {row['descricao']}")
-                            link_foto_vale_c = row.get('foto_url')
+                            link_foto_vale_c = extrair_url(row.get('foto_url'))
                             if link_foto_vale_c:
                                 st.image(link_foto_vale_c, width=180, caption="Comprovante do Adiantamento")
 
