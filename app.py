@@ -24,14 +24,27 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
-# --- FUNÇÃO AUXILIAR PARA CORRIGIR RETORNO DE URL DO SUPABASE ---
-def extrair_url(foto_obj):
-    """Garante que obteremos uma string de URL válida, mesmo se o Supabase retornar um dicionário"""
+# --- FUNÇÃO AUXILIAR ULTRA-SEGURA PARA VALIDAR E EXTRAIR URL DO SUPABASE ---
+def extrair_url_valida(foto_obj):
+    """Garante que obteremos uma URL válida de internet e evita que o st.image quebre"""
     if not foto_obj:
         return None
+    
+    # Se o Supabase retornar um dicionário com a URL pública dentro
     if isinstance(foto_obj, dict):
-        return foto_obj.get("publicUrl") or foto_obj.get("public_url") or None
-    return str(foto_obj)
+        url = foto_obj.get("publicUrl") or foto_obj.get("public_url")
+    else:
+        url = str(foto_obj).strip()
+        
+    # Proteção contra valores nulos em formato de texto ou vazios
+    if not url or url.lower() in ["none", "null", "undefined", ""]:
+        return None
+        
+    # O Streamlit só aceita URLs de internet que comecem com http:// ou https://
+    if url.startswith("http://") or url.startswith("https://"):
+        return url
+        
+    return None
 
 # ----------------- OTIMIZAÇÃO: CACHE PARA LISTAGEM DE USUÁRIOS -----------------\
 @st.cache_data(ttl=600)  # Guarda a lista de usuários por 10 minutos para acelerar o app
@@ -250,8 +263,11 @@ else:
                     col1, col2 = st.columns([3, 2])
                     with col1:
                         st.write(f"**Coletor:** {row['coletor']} | **Qtd:** {row['quantidade']} un | **Data:** {row['data']}")
-                        link_foto = extrair_url(row.get('foto_url'))
-                        if link_foto: st.image(link_foto, width=150)
+                        link_foto = extrair_url_valida(row.get('foto_url'))
+                        if link_foto: 
+                            st.image(link_foto, width=150)
+                        else:
+                            st.caption("📷 Sem foto anexada")
                     with col2:
                         if st.button(f"✓ Aprovar", key=f"ap_{row['id']}", type="primary"):
                             with st.spinner("Aprovando..."):
@@ -425,7 +441,7 @@ else:
                 for idx, row in vales_filtrados_historico.sort_values(by="data", ascending=False).iterrows():
                     with st.expander(f"📉 Data: {row['data']} | Coletor: {row['coletor']} | Valor: R$ {float(row['valor_vale']):.2f}"):
                         st.write(f"**Descrição/Motivo:** {row['descricao']}")
-                        link_foto_vale = extrair_url(row.get('foto_url'))
+                        link_foto_vale = extrair_url_valida(row.get('foto_url'))
                         if link_foto_vale:
                             st.image(link_foto_vale, width=200, caption="Comprovante do Vale")
                         else:
@@ -640,8 +656,11 @@ else:
                         else:
                             with st.expander(f"{status_cor} Data: {item['data']} | Qtd: {item['quantidade']} | {status_pago_txt}"):
                                 st.write(f"**Valor:** R$ {float(item['valor_total']):.2f}")
-                                link_foto = extrair_url(item['foto_url'])
-                                if link_foto: st.image(link_foto, width=150)
+                                link_foto = extrair_url_valida(item['foto_url'])
+                                if link_foto: 
+                                    st.image(link_foto, width=150)
+                                else:
+                                    st.caption("📷 Sem foto anexada")
 
         with menu[2]:
             st.header("Meus Adiantamentos (Vales)")
@@ -664,7 +683,7 @@ else:
                     for idx, row in vales_coletor.sort_values(by="data", ascending=False).iterrows():
                         with st.expander(f"📉 Data: {row['data']} | Valor: R$ {float(row['valor_vale']):.2f}"):
                             st.write(f"**Descrição:** {row['descricao']}")
-                            link_foto_vale_c = extrair_url(row.get('foto_url'))
+                            link_foto_vale_c = extrair_url_valida(row.get('foto_url'))
                             if link_foto_vale_c:
                                 st.image(link_foto_vale_c, width=180, caption="Comprovante do Adiantamento")
 
