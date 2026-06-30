@@ -583,7 +583,8 @@ else:
             total_ja_pago_c = aprovadas[aprovadas["pago"] == True]["valor_total"].sum() if not aprovadas.empty else 0.0
             total_nao_pago_c = (aprovadas[aprovadas["pago"] != True]["valor_total"].sum() if not aprovadas.empty else 0.0) + float(premiacoes_dele)
             
-            total_liquido_coletor = float(total_nao_pago_c) - float(vales_dele)
+            # Cálculo final corrigido: Deduzindo o que já foi pago para não acumular saldo fantasma
+            total_liquido_coletor = (float(total_coletas_c) + float(total_premiacoes_c)) - float(total_vales_c) - float(total_ja_pago_c)
             
             c1, c2, c3 = st.columns(3)
             with c1:
