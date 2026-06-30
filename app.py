@@ -545,14 +545,6 @@ else:
             
             st.session_state["c_filtro_inicio"] = c_data_ini
             st.session_state["c_filtro_fim"] = c_data_fim
-
-            total_coletas_c = 0.0
-            total_premiacoes_c = 0.0
-            total_vales_c = 0.0
-            total_ja_pago_c = 0.0
-            dados_coletor = pd.DataFrame()
-            df_premiacoes_c = pd.DataFrame()
-            df_vales = pd.DataFrame()
             
             try:
                 res_coletas_c = supabase.table("coletas").select("*").eq("coletor", st.session_state['nome_completo_atual']).execute()
@@ -591,10 +583,8 @@ else:
             total_ja_pago_c = aprovadas[aprovadas["pago"] == True]["valor_total"].sum() if not aprovadas.empty else 0.0
             total_nao_pago_c = (aprovadas[aprovadas["pago"] != True]["valor_total"].sum() if not aprovadas.empty else 0.0) + float(premiacoes_dele)
             
-            # A caixinha de líquido deve mostrar apenas o valor das coletas APROVADAS que ainda NÃO foram pagas de verdade
-            coletas_pendentes_pagamento = dados_coletor[(dados_coletor["status"] == "Aprovado") & (dados_coletor["pago"] != True)]["valor_total"].sum() if not dados_coletor.empty else 0.0
-
-            total_liquido_coletor = (float(coletas_pendentes_pagamento) + float(total_premiacoes_c)) - float(total_vales_c)
+            # Cálculo final corrigido: Deduzindo o que já foi pago para não acumular saldo fantasma
+            total_liquido_coletor = (float(total_coletas_c) + float(total_premiacoes_c)) - float(total_vales_c) - float(total_ja_pago_c)
             
             c1, c2, c3 = st.columns(3)
             with c1:
