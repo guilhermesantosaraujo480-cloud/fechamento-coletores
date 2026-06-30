@@ -14,7 +14,7 @@ st.set_page_config(page_title="Sistema Vivo Coletas", layout="centered", initial
 # VALOR PADRÃO POR COLETA
 VALOR_POR_COLETA = 10.0
 
-# ----------------- CONEXÃO COM O BANCO DE DADOS (SUPABASE) -----------------
+# ----------------- CONEXÃO COM O BANCO DE DADOS (SUPABASE) -----------------\
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
@@ -24,7 +24,7 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
-# ----------------- OTIMIZAÇÃO: CACHE PARA LISTAGEM DE USUÁRIOS -----------------
+# ----------------- OTIMIZAÇÃO: CACHE PARA LISTAGEM DE USUÁRIOS -----------------\
 @st.cache_data(ttl=600)  # Guarda a lista de usuários por 10 minutos para acelerar o app
 def listar_usuarios_cache():
     try:
@@ -33,7 +33,7 @@ def listar_usuarios_cache():
     except Exception:
         return []
 
-# ----------------- INICIALIZAÇÃO PREVENTIVA DE TODO O STATE -----------------
+# ----------------- INICIALIZAÇÃO PREVENTIVA DE TODO O STATE -----------------\
 data_hoje = datetime.now().date()
 primeiro_dia_mes = data_hoje.replace(day=1)
 
@@ -72,7 +72,7 @@ def limpar_filtros_callback():
     st.session_state["input_data_fim"] = data_hoje
     st.session_state["input_coletor_sel"] = "Todos"
 
-# ----------------- RECUPERAÇÃO DE SESSÃO VIA TOKEN (RESISTENTE AO F5) -----------------
+# ----------------- RECUPERAÇÃO DE SESSÃO VIA TOKEN (RESISTENTE AO F5) -----------------\
 if not st.session_state["logado"] and "session" in st.query_params:
     token_url = st.query_params["session"]
     try:
@@ -88,7 +88,7 @@ if not st.session_state["logado"] and "session" in st.query_params:
 st.title("📱 Sistema de Coletas")
 st.markdown("---")
 
-# ----------------- TELA DE LOGIN -----------------
+# ----------------- TELA DE LOGIN -----------------\
 if not st.session_state["logado"]:
     st.subheader("🔑 Acesso ao Sistema")
     user_input = st.text_input("Usuário (Login):").strip().lower()
@@ -118,7 +118,7 @@ if not st.session_state["logado"]:
         except Exception as e:
             st.error(f"Erro ao conectar com o banco de dados: {e}")
 
-# ----------------- ÁREA DO SISTEMA (LOGADO) -----------------
+# ----------------- ÁREA DO SISTEMA (LOGADO) -----------------\
 else:
     col_user, col_logout = st.columns([3, 1])
     col_user.write(f"👤 Conectado: **{st.session_state['nome_completo_atual']}** ({st.session_state['cargo_atual']})")
@@ -152,6 +152,13 @@ else:
             df_bruto_coletas = pd.DataFrame(res_coletas.data) if res_coletas.data else pd.DataFrame(columns=["id", "data", "coletor", "quantidade", "foto_url", "status", "valor_total", "pago"])
             df_bruto_vales = pd.DataFrame(res_vales.data) if res_vales.data else pd.DataFrame(columns=["id", "data", "coletor", "valor_vale", "descricao", "foto_url"])
             df_bruto_premiacoes = pd.DataFrame(res_premiacoes.data) if res_premiacoes.data else pd.DataFrame(columns=["id", "data", "coletor", "valor_premiacao", "descricao"])
+            
+            # Trava preventiva contra KeyError caso a coluna pago não venha na base de dados
+            if "pago" not in df_bruto_coletas.columns:
+                df_bruto_coletas["pago"] = False
+            else:
+                df_bruto_coletas["pago"] = df_bruto_coletas["pago"].fillna(False)
+
             lista_coletores = ["Todos"] + [u["nome_completo"] for u in res_users_data if u.get("cargo") == "COLETOR"]
         except Exception as e:
             st.error(f"Erro ao carregar dados do banco: {e}")
@@ -160,7 +167,7 @@ else:
             df_bruto_premiacoes = pd.DataFrame(columns=["id", "data", "coletor", "valor_premiacao", "descricao"])
             lista_coletores = ["Todos"]
 
-        # Abas de Navegação do ADM (Declaração correta de 4 abas para evitar o IndexError)
+        # Abas de Navegação do ADM
         sub_menu_adm = st.tabs(["📋 Gestão de Coletas", "📉 Registrar/Ver Vales", "🏅 Serviços/Premiações", "👤 Cadastrar Usuários"])
         
         # ----------------- ABA 1: GESTÃO DE COLETAS -----------------
@@ -226,7 +233,7 @@ else:
                     else:
                         st.button(f"💰 Marcar TODAS as Coletas de {coletor_sel} como Pagas (Marque a caixa acima)", type="secondary", disabled=True, use_container_width=True)
 
-            st.subheader("📥 Coletas Pendentes no Período")
+            st.subheader("📋 Coletas Pendentes no Período")
             pendentes = df_filtrado[df_filtrado["status"] == "Pendente"] if not df_filtrado.empty else pd.DataFrame()
             
             if pendentes.empty:
@@ -483,7 +490,7 @@ else:
                         st.rerun()
 
     # =========================================================================
-    # PERFIL COLETOR (TOTALMENTE PRESERVADO)
+    # PERFIL COLETOR
     # =========================================================================
     else:
         menu = st.tabs(["📲 Enviar Coleta", "📊 Minhas Coletas", "💰 Meus Vales", "📄 Comprovantes"])
@@ -546,9 +553,22 @@ else:
             st.session_state["c_filtro_inicio"] = c_data_ini
             st.session_state["c_filtro_fim"] = c_data_fim
             
+            # Inicialização segura das variáveis contra NameError se a base vier vazia
+            total_coletas_c = 0.0
+            total_premiacoes_c = 0.0
+            total_vales_c = 0.0
+            total_ja_pago_c = 0.0
+            dados_coletor = pd.DataFrame()
+            df_premiacoes_c = pd.DataFrame()
+            df_vales = pd.DataFrame()
+            
             try:
                 res_coletas_c = supabase.table("coletas").select("*").eq("coletor", st.session_state['nome_completo_atual']).execute()
                 df = pd.DataFrame(res_coletas_c.data) if res_coletas_c.data else pd.DataFrame(columns=["id", "data", "coletor", "quantidade", "foto_url", "status", "valor_total", "pago"])
+                if "pago" not in df.columns:
+                    df["pago"] = False
+                else:
+                    df["pago"] = df["pago"].fillna(False)
             except Exception:
                 df = pd.DataFrame(columns=["id", "data", "coletor", "quantidade", "foto_url", "status", "valor_total", "pago"])
                 
@@ -564,7 +584,7 @@ else:
             
             df_premiacoes_c['data_dt'] = pd.to_datetime(df_premiacoes_c['data']).dt.date if not df_premiacoes_c.empty else None
             premiacoes_dele_filtrado = df_premiacoes_c[(df_premiacoes_c['data_dt'] >= c_data_ini) & (df_premiacoes_c['data_dt'] <= c_data_fim)] if not df_premiacoes_c.empty else pd.DataFrame()
-            premiacoes_dele = premiacoes_dele_filtrado["valor_premiacao"].sum() if not premiacoes_dele_filtrado.empty else 0.0
+            total_premiacoes_c = float(premiacoes_dele_filtrado["valor_premiacao"].sum()) if not premiacoes_dele_filtrado.empty else 0.0
 
             # Busca os Vales do Coletor logado
             try:
@@ -575,15 +595,18 @@ else:
                 
             if not df_vales.empty:
                 df_vales['data_dt'] = pd.to_datetime(df_vales['data']).dt.date
-                vales_dele = df_vales[(df_vales['data_dt'] >= c_data_ini) & (df_vales['data_dt'] <= c_data_fim)]["valor_vale"].sum()
+                total_vales_c = float(df_vales[(df_vales['data_dt'] >= c_data_ini) & (df_vales['data_dt'] <= c_data_fim)]["valor_vale"].sum())
             else:
-                vales_dele = 0.0
+                total_vales_c = 0.0
             
             aprovadas = dados_coletor[dados_coletor["status"] == "Aprovado"] if not dados_coletor.empty else pd.DataFrame()
-            total_ja_pago_c = aprovadas[aprovadas["pago"] == True]["valor_total"].sum() if not aprovadas.empty else 0.0
-            total_nao_pago_c = (aprovadas[aprovadas["pago"] != True]["valor_total"].sum() if not aprovadas.empty else 0.0) + float(premiacoes_dele)
+            total_ja_pago_c = float(aprovadas[aprovadas["pago"] == True]["valor_total"].sum()) if not aprovadas.empty else 0.0
             
-            total_liquido_coletor = float(total_nao_pago_c) - float(vales_dele)
+            # MATEMÁTICA CORRIGIDA: Coletas Aprovadas que NÃO foram pagas ainda
+            total_coletas_pendentes = float(aprovadas[aprovadas["pago"] != True]["valor_total"].sum()) if not aprovadas.empty else 0.0
+            
+            # Líquido a receber = (Aparelhos pendentes + Premiações) - Vales do período
+            total_liquido_coletor = (total_coletas_pendentes + total_premiacoes_c) - total_vales_c
             
             c1, c2, c3 = st.columns(3)
             with c1:
@@ -592,7 +615,7 @@ else:
                 else:
                     st.metric("Líquido a Receber", f"R$ {total_liquido_coletor:.2f}")
             with c2:
-                st.metric("Vales no Período (-)", f"R$ {vales_dele:.2f}")
+                st.metric("Vales no Período (-)", f"R$ {total_vales_c:.2f}")
             with c3:
                 st.metric("Valor Já Pago", f"R$ {total_ja_pago_c:.2f}")
             
