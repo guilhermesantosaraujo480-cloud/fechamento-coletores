@@ -260,30 +260,33 @@ else:
             total_ja_pago = ja_pagas_lista["valor_total"].sum() if not ja_pagas_lista.empty else 0.0
             total_nao_pago_adm = (nao_pagas_lista["valor_total"].sum() if not nao_pagas_lista.empty else 0.0) + float(total_premiacoes)
             
-            # --- LÓGICA FINANCEIRA CORRIGIDA (MANTÉM O NEGATIVO REAL EM VERMELHO) ---
-            # O saldo real é tudo o que ele produziu menos os vales e menos o que já foi marcado como pago.
-            saldo_calculado = float(total_bruto) - float(total_vales) - float(total_ja_pago)
+            # --- LÓGICA FINANCEIRA CORRIGIDA E REVISADA ---
+            total_vales = vales_financeiro["valor_vale"].sum() if not vales_financeiro.empty else 0.0
+            total_bruto = aprovados_periodo["valor_total"].sum() if not aprovados_periodo.empty else 0.0
+            total_ja_pago = ja_pagas_lista["valor_total"].sum() if not ja_pagas_lista.empty else 0.0
+            total_nao_pago_adm = nao_pagas_lista["valor_total"].sum() if not nao_pagas_lista.empty else 0.0
             
-            # Aqui está o segredo: Se você trabalha fechando a conta inteira do período, 
-            # o Líquido a Pagar deve mostrar o saldo calculado diretamente (permitindo o negativo).
-            total_liquido = saldo_calculado 
-            
-            # Layout das 4 métricas limpas
+            # Se já foi TUDO pago (não tem mais nada pendente), a conta do período zerou!
+            if total_nao_pago_adm == 0 and total_ja_pago > 0:
+                total_liquido = 0.0
+            else:
+                # Caso contrário, o que resta pagar é o que não foi pago menos os vales
+                total_liquido = float(total_nao_pago_adm) - float(total_vales)
+
+            # Layout das 4 métricas idênticas e emparelhadas
             cm1, cm2, cm3, cm4 = st.columns(4)
             cm1.metric("Bruto Período", f"R$ {total_bruto:.2f}")
             cm2.metric("Valor Já Pago", f"R$ {total_ja_pago:.2f}")
             cm3.metric("Desconto Vales (-)", f"R$ {total_vales:.2f}")
-            
-            # O st.metric do Streamlit deixa o número VERMELHO automaticamente se ele for negativo!
             cm4.metric("Líquido a Pagar", f"R$ {total_liquido:.2f}")
             
-            # Avisos visuais em faixas coloridas para ajudar o operador do sistema
+            # Alertas Visuais Baseados no Saldo Real
             if total_liquido < 0:
-                st.error(f"🔴 **Saldo Devedor:** Este coletor está devendo **R$ {abs(total_liquido):.2f}** para a empresa (os vales superaram os ganhos do período).")
-            elif total_liquido == 0 and total_ja_pago > 0:
-                st.success("🟢 **Conta Zerada:** O fechamento foi pago/abatido e a conta deste período está totalmente quitada!")
+                st.error(f"🔴 **Saldo Devedor:** Este coletor está devendo **R$ {abs(total_liquido):.2f}** em vales que superaram as coletas pendentes!")
+            elif total_nao_pago_adm == 0 and total_ja_pago > 0:
+                st.success("🟢 **Fechamento Concluído:** Todas as coletas deste período foram marcadas como pagas e a conta está zerada!")
 
-            # --- TEXTO DO RECIBO ATUALIZADO ---
+            # --- TEXTO DO RECIBO CORRIGIDO ---
             container_recibo = st.container()
             with container_recibo:
                 if coletor_sel != "Todos":
@@ -291,9 +294,9 @@ else:
                     
                     txt_aviso_recibo = ""
                     if total_liquido < 0:
-                        txt_aviso_recibo = f"\n⚠️ *SALDO DEVEDOR:* R$ {abs(total_liquido):.2f}\n"
-                    elif total_liquido == 0:
-                        txt_aviso_recibo = f"\n✅ *FECHAMENTO CONCLUÍDO - CONTA ZERADA*\n"
+                        txt_aviso_recibo = f"\n⚠️ *SALDO DEVEDOR (Próximo Período):* R$ {abs(total_liquido):.2f}\n"
+                    elif total_nao_pago_adm == 0:
+                        txt_aviso_recibo = f"\n✅ *CONTA ZERADA / FECHAMENTO PAGO*\n"
                     
                     texto_recibo = (
                         f"*FECHAMENTO DE COLETAS*\n"
@@ -302,8 +305,8 @@ else:
                         f"-----------------------------\n"
                         f"📱 *Total de Aparelhos:* {total_aparelhos} un\n"
                         f"💰 *Total Bruto Aprovado:* R$ {total_bruto:.2f}\n"
+                        f"💵 *Valor Já Pago:* R$ {total_ja_pago:.2f}\n"
                         f"📉 *Desconto em Vales:* R$ {total_vales:.2f}\n"
-                        f"💵 *Valor Já Pago (Pix):* R$ {total_ja_pago:.2f}\n"
                         f"-----------------------------\n"
                         f"💵 *Líquido à Pagar Restante:* R$ {total_liquido:.2f}"
                         f"{txt_aviso_recibo}"
