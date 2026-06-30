@@ -545,6 +545,14 @@ else:
             
             st.session_state["c_filtro_inicio"] = c_data_ini
             st.session_state["c_filtro_fim"] = c_data_fim
+
+            total_coletas_c = 0.0
+            total_premiacoes_c = 0.0
+            total_vales_c = 0.0
+            total_ja_pago_c = 0.0
+            dados_coletor = pd.DataFrame()
+            df_premiacoes_c = pd.DataFrame()
+            df_vales = pd.DataFrame()
             
             try:
                 res_coletas_c = supabase.table("coletas").select("*").eq("coletor", st.session_state['nome_completo_atual']).execute()
