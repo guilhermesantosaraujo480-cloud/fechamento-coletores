@@ -264,7 +264,7 @@ else:
             cm1.metric("Bruto Aparelhos", f"R$ {total_coletas_bruto:.2f}")
             cm2.metric("Premiações (+)", f"R$ {total_premiacoes:.2f}")
             cm3.metric("Vales (-)", f"R$ {total_vales:.2f}")
-            cm4.metric("Líquido a Pagar", f"R$ {total_liquido:.2f}")
+            cm4.metric("Valor Líquido", f"R$ {total_liquido:.2f}")
             
             # Alertas Visuais do Saldo
             if total_liquido < 0:
@@ -594,7 +594,7 @@ else:
             with c2:
                 st.metric("Vales no Período (-)", f"R$ {vales_dele:.2f}")
             with c3:
-                st.metric("Valor Já Pago", f"R$ {total_ja_pago_c:.2f}")
+                st.metric("Valor Líquido", f"R$ {total_ja_pago_c:.2f}")
             
             st.markdown("### Envios do Período")
             
