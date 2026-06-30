@@ -150,18 +150,18 @@ else:
             res_users_data = listar_usuarios_cache()
             
             df_bruto_coletas = pd.DataFrame(res_coletas.data) if res_coletas.data else pd.DataFrame(columns=["id", "data", "coletor", "quantidade", "foto_url", "status", "valor_total", "pago"])
-            df_bruto_vales = pd.DataFrame(res_vales.data) if res_vales.data else pd.DataFrame(columns=["id", "data", "coletor", "valor_vale", "descricao"])
+            df_bruto_vales = pd.DataFrame(res_vales.data) if res_vales.data else pd.DataFrame(columns=["id", "data", "coletor", "valor_vale", "descricao", "foto_url"])
             df_bruto_premiacoes = pd.DataFrame(res_premiacoes.data) if res_premiacoes.data else pd.DataFrame(columns=["id", "data", "coletor", "valor_premiacao", "descricao"])
             lista_coletores = ["Todos"] + [u["nome_completo"] for u in res_users_data if u.get("cargo") == "COLETOR"]
         except Exception as e:
             st.error(f"Erro ao carregar dados do banco: {e}")
             df_bruto_coletas = pd.DataFrame(columns=["id", "data", "coletor", "quantidade", "foto_url", "status", "valor_total", "pago"])
-            df_bruto_vales = pd.DataFrame(columns=["id", "data", "coletor", "valor_vale", "descricao"])
+            df_bruto_vales = pd.DataFrame(columns=["id", "data", "coletor", "valor_vale", "descricao", "foto_url"])
             df_bruto_premiacoes = pd.DataFrame(columns=["id", "data", "coletor", "valor_premiacao", "descricao"])
             lista_coletores = ["Todos"]
 
-        # Abas de Navegação do ADM
-        sub_menu_adm = st.tabs(["📋 Gestão de Coletas", "📉 Registrar/Ver Vales", "👤 Cadastrar Usuários"])
+        # Abas de Navegação do ADM (Declaração correta de 4 abas para evitar o IndexError)
+        sub_menu_adm = st.tabs(["📋 Gestão de Coletas", "📉 Registrar/Ver Vales", "🏅 Serviços/Premiações", "👤 Cadastrar Usuários"])
         
         # ----------------- ABA 1: GESTÃO DE COLETAS -----------------
         with sub_menu_adm[0]:
@@ -189,7 +189,7 @@ else:
             else:
                 df_filtrado = df_bruto_coletas.copy()
 
-            # Filtragem de vales
+            # Filtragem de vales paralela para o período
             if not df_bruto_vales.empty:
                 df_bruto_vales['data_dt'] = pd.to_datetime(df_bruto_vales['data']).dt.date
                 vales_financeiro = df_bruto_vales[(df_bruto_vales['data_dt'] >= data_inicio) & (df_bruto_vales['data_dt'] <= data_fim)].copy()
@@ -198,7 +198,7 @@ else:
             else:
                 vales_financeiro = df_bruto_vales.copy()
 
-            # Filtragem de premiações (Tabela Nova)
+            # Filtragem de premiações para o período
             if not df_bruto_premiacoes.empty:
                 df_bruto_premiacoes['data_dt'] = pd.to_datetime(df_bruto_premiacoes['data']).dt.date
                 premiacoes_financeiro = df_bruto_premiacoes[(df_bruto_premiacoes['data_dt'] >= data_inicio) & (df_bruto_premiacoes['data_dt'] <= data_fim)].copy()
@@ -209,7 +209,6 @@ else:
 
             aprovados_periodo = df_filtrado[df_filtrado["status"] == "Aprovado"] if not df_filtrado.empty else pd.DataFrame()
             nao_pagas_lista = aprovados_periodo[aprovados_periodo["pago"] != True] if not aprovados_periodo.empty else pd.DataFrame()
-            ja_pagas_lista = aprovados_periodo[aprovados_periodo["pago"] == True] if not aprovados_periodo.empty else pd.DataFrame()
 
             container_botoes_massa = st.container()
             with container_botoes_massa:
@@ -250,37 +249,32 @@ else:
                             st.rerun()
                     st.markdown("---")
             
+            # ----------------- NOVO FECHAMENTO FINANCEIRO LIMPO -----------------
             st.subheader("💵 Fechamento Financeiro")
             total_vales = vales_financeiro["valor_vale"].sum() if not vales_financeiro.empty else 0.0
             total_coletas_bruto = aprovados_periodo["valor_total"].sum() if not aprovados_periodo.empty else 0.0
             total_premiacoes = premiacoes_financeiro["valor_premiacao"].sum() if not premiacoes_financeiro.empty else 0.0
-            total_ja_pago = ja_pagas_lista["valor_total"].sum() if not ja_pagas_lista.empty else 0.0
             
-            # Novo cálculo: Bruto total junta aparelhos + as premiações diretas
+            # Ganhos (Aparelhos + Premiações) - Descontos (Vales)
             total_bruto_geral = float(total_coletas_bruto) + float(total_premiacoes)
+            total_liquido = total_bruto_geral - float(total_vales)
             
-            # Conta matemática real com a premiação somando
-            saldo_trabalho = total_bruto_geral - float(total_vales)
-            
-            if saldo_trabalho < 0:
-                total_liquido = saldo_trabalho
-            else:
-                total_liquido = max(0.0, saldo_trabalho - float(total_ja_pago))
-            
-            # Layout expandido para 5 métricas organizadas
-            cm1, cm2, cm3, cm4, cm5 = st.columns(5)
+            # Organizado em 4 colunas bem dimensionadas para impedir que os valores cortem na tela
+            cm1, cm2, cm3, cm4 = st.columns(4)
             cm1.metric("Bruto Aparelhos", f"R$ {total_coletas_bruto:.2f}")
             cm2.metric("Premiações (+)", f"R$ {total_premiacoes:.2f}")
-            cm3.metric("Valor Já Pago", f"R$ {total_ja_pago:.2f}")
-            cm4.metric("Desconto Vales (-)", f"R$ {total_vales:.2f}")
-            cm5.metric("Líquido a Pagar", f"R$ {total_liquido:.2f}")
+            cm3.metric("Vales (-)", f"R$ {total_vales:.2f}")
+            cm4.metric("Líquido a Pagar", f"R$ {total_liquido:.2f}")
             
+            # Alertas Visuais do Saldo
             if total_liquido < 0:
-                st.error(f"🔴 **Saldo Devedor:** Este coletor está **DEVENDO R$ {abs(total_liquido):.2f}** (Os vales superaram os ganhos com aparelhos e premiações).")
-            elif total_liquido == 0 and total_ja_pago > 0:
-                st.success("🟢 **Fechamento Concluído:** A conta deste período está totalmente quitada!")
+                st.error(f"🔴 **Saldo Devedor:** Este coletor está devendo **R$ {abs(total_liquido):.2f}** (Os vales superaram os ganhos!).")
+            elif total_liquido == 0:
+                st.success("🟢 **Conta Zerada:** O saldo deste período está totalmente zerado.")
+            else:
+                st.info(f"🔵 **Saldo Disponível:** Resta realizar o repasse líquido de **R$ {total_liquido:.2f}**.")
 
-            # --- TEXTO DO RECIBO COM PREMIAÇÃO ---
+            # --- TEXTO DO RECIBO ---
             container_recibo = st.container()
             with container_recibo:
                 if coletor_sel != "Todos":
@@ -288,9 +282,9 @@ else:
                     
                     txt_aviso_recibo = ""
                     if total_liquido < 0:
-                        txt_aviso_recibo = f"\n⚠️ *SALDO DEVEDOR (Fica para o próximo período):* R$ {abs(total_liquido):.2f}\n"
+                        txt_aviso_recibo = f"\n⚠️ *SALDO DEVEDOR COMPROVADO:* R$ {abs(total_liquido):.2f}\n"
                     elif total_liquido == 0:
-                        txt_aviso_recibo = f"\n✅ *CONTA ZERADA / FECHAMENTO INTEGRAL*\n"
+                        txt_aviso_recibo = f"\n✅ *CONTA TOTALMENTE QUITADA*\n"
                     
                     texto_recibo = (
                         f"*FECHAMENTO DE COLETAS*\n"
@@ -301,37 +295,56 @@ else:
                         f"💰 *Total Aparelhos:* R$ {total_coletas_bruto:.2f}\n"
                         f"🎁 *Premiações/Serviços Extras:* R$ {total_premiacoes:.2f}\n"
                         f"📉 *Desconto em Vales:* R$ {total_vales:.2f}\n"
-                        f"💵 *Valor Já Pago (Pix):* R$ {total_ja_pago:.2f}\n"
                         f"-----------------------------\n"
-                        f"💵 *Líquido à Pagar Restante:* R$ {total_liquido:.2f}"
+                        f"💵 *Líquido à Pagar Final:* R$ {total_liquido:.2f}"
                         f"{txt_aviso_recibo}"
                         f"-----------------------------\n"
                         f"Gerado em: {datetime.now().strftime('%d/%m/%Y às %H:%M')}"
                     )
-                    chave_dinamica_recibo = f"txt_recibo_{coletor_sel}_{data_inicio}_{data_fim}"
                     st.markdown("#### 📋 Texto do Recibo (Pronto para copiar)")
                     st.code(texto_recibo, language="text")
             
-            st.markdown("#### Detalhes dos Aprovados")
-            if aprovados_periodo.empty:
-                st.info("Nenhuma coleta aprovada neste período.")
-            else:
-                for index, row in aprovados_periodo.iterrows():
-                    pago_atual = row.get('pago', False)
-                    status_pago_txt = "✅ Já Pago" if pago_atual == True else "❌ Não Pago"
+            # --- DETALHES DE COLETAS APROVADAS E PREMIAÇÕES DO PERÍODO UNIFICADAS ---
+            st.markdown("#### Detalhes dos Ganhos Aprovados")
+            
+            # Unificação e ordenação para exibição conjunta (Coletas Aprovadas + Premiações do Período)
+            lista_ganhos_adm = []
+            if not aprovados_periodo.empty:
+                for idx, row in aprovados_periodo.iterrows():
+                    lista_ganhos_adm.append({
+                        "id": row["id"], "tipo": "COLETA", "data": row["data"], "coletor": row["coletor"],
+                        "valor": float(row["valor_total"]), "pago": row.get("pago", False), "detalhe": f"Qtd: {row['quantidade']} un"
+                    })
+            if not premiacoes_financeiro.empty:
+                for idx, row in premiacoes_financeiro.iterrows():
+                    lista_ganhos_adm.append({
+                        "id": row["id"], "tipo": "PREMIACAO", "data": row["data"], "coletor": row["coletor"],
+                        "valor": float(row["valor_premiacao"]), "pago": False, "detalhe": f"🏅 {row['descricao']}"
+                    })
                     
+            if not lista_ganhos_adm:
+                st.info("Nenhum ganho aprovado ou premiação encontrada neste período.")
+            else:
+                # Exibe ordenando por data mais recente
+                for item in sorted(lista_ganhos_adm, key=lambda x: x["data"], reverse=True):
                     col_p1, col_p2 = st.columns([3, 2])
                     with col_p1:
-                        st.write(f"**{row['coletor']}** | R$ {float(row['valor_total']):.2f} | Data: {row['data']} ({status_pago_txt})")
+                        if item["tipo"] == "COLETA":
+                            status_pago_txt = "✅ Já Pago" if item["pago"] else "❌ Não Pago"
+                            st.write(f"📱 **{item['coletor']}** | R$ {item['valor']:.2f} | Data: {item['data']} ({status_pago_txt})")
+                        else:
+                            st.write(f"🏅 **{item['coletor']}** | R$ {item['valor']:.2f} | Data: {item['data']} ({item['detalhe']})")
                     with col_p2:
-                        if pago_atual != True:
-                            if st.button(f"Marcar como Pago", key=f"pag_{row['id']}"):
+                        if item["tipo"] == "COLETA" and not item["pago"]:
+                            if st.button(f"Marcar como Pago", key=f"pag_{item['id']}"):
                                 with st.spinner("Atualizando..."):
-                                    supabase.table("coletas").update({"pago": True}).eq("id", row["id"]).execute()
+                                    supabase.table("coletas").update({"pago": True}).eq("id", item["id"]).execute()
                                 st.rerun()
+                        elif item["tipo"] == "PREMIACAO":
+                            st.caption("✨ Lançamento de Premiação")
                     st.markdown("---")
-                    
-        # ----------------- ABA 2: REGISTRAR/VER VALES (TOTALMENTE ATUALIZADA) -----------------
+
+        # ----------------- ABA 2: REGISTRAR/VER VALES -----------------
         with sub_menu_adm[1]:
             st.subheader("💰 Registrar Vale / Adiantamento")
             coletores_vales = [u["nome_completo"] for u in res_users_data if u.get("cargo") == "COLETOR"]
@@ -342,14 +355,13 @@ else:
                 data_vale = st.date_input("Data do Vale:", datetime.now(), key=f"dat_vale_{st.session_state['reset_ctr']}")
                 motivo_vale = st.text_input("Observação/Motivo (Opcional):", value="Adiantamento de Coletas", key=f"mot_vale_{st.session_state['reset_ctr']}")
                 
-                # NOVO: Upload obrigatório do comprovante do vale
+                # Comprovante de imagem obrigatória dos vales funcionando perfeitamente
                 foto_vale = st.file_uploader("Selecione ou tire a foto do comprovante do vale:", type=["png", "jpg", "jpeg"], key=f"foto_vale_{st.session_state['reset_ctr']}")
                 
                 if st.button("Lançar Vale", type="primary"):
-                    if foto_vale: # Validação obrigatória da imagem
+                    if foto_vale:
                         try:
                             with st.spinner("Processando e compactando imagem do vale..."):
-                                # Compactação da imagem seguindo o mesmo padrão de aparelhos
                                 img = Image.open(foto_vale)
                                 img.thumbnail((1024, 1024))
                                 
@@ -359,7 +371,6 @@ else:
                                 
                                 nome_foto_nuvem = f"vale_{datetime.now().strftime('%Y%m%d%H%M%S')}_{st.session_state['usuario_atual']}.jpg"
                                 
-                                # Upload para o storage existente
                                 supabase.storage.from_("comprovantes").upload(
                                     path=nome_foto_nuvem, file=conteudo_foto,
                                     file_options={"content-type": "image/jpeg"}
@@ -368,16 +379,12 @@ else:
                                 foto_url_final = supabase.storage.from_("comprovantes").get_public_url(nome_foto_nuvem)
                                 
                                 novo_vale = {
-                                    "data": str(data_vale), 
-                                    "coletor": str(coletor_vale).strip(),
-                                    "valor_vale": float(valor_vale_input), 
-                                    "descricao": str(motivo_vale).strip(),
-                                    "foto_url": foto_url_final # Salvando a URL no banco
+                                    "data": str(data_vale), "coletor": str(coletor_vale).strip(),
+                                    "valor_vale": float(valor_vale_input), "descricao": str(motivo_vale).strip(),
+                                    "foto_url": foto_url_final
                                 }
-                                
-                                with st.spinner("Salvando no banco de dados..."):
+                                with st.spinner("Salvando..."):
                                     supabase.table("vales_coleta").insert(novo_vale).execute()
-                                
                                 st.success(f"✅ Vale de R$ {valor_vale_input:.2f} registrado com sucesso para {coletor_vale}!")
                                 st.session_state["reset_ctr"] += 1
                                 st.rerun()
@@ -398,7 +405,6 @@ else:
             with col_v2:
                 v_data_fim = st.date_input("Até (Vale):", value=st.session_state["v_adm_filtro_fim"], key="v_adm_fim")
             with col_v3:
-                # NOVO: Filtro por coletor na tela de histórico de vales
                 coletor_vale_sel = st.selectbox("Filtrar por Coletor (Vales):", lista_coletores, key="v_adm_coletor_filtro")
             
             st.session_state["v_adm_filtro_inicio"] = v_data_ini
@@ -407,8 +413,6 @@ else:
             if not df_bruto_vales.empty:
                 df_bruto_vales['data_dt'] = pd.to_datetime(df_bruto_vales['data']).dt.date
                 vales_filtrados_historico = df_bruto_vales[(df_bruto_vales['data_dt'] >= v_data_ini) & (df_bruto_vales['data_dt'] <= v_data_fim)].copy()
-                
-                # Aplica o filtro de coletor se não for "Todos"
                 if coletor_vale_sel != "Todos":
                     vales_filtrados_historico = vales_filtrados_historico[vales_filtrados_historico["coletor"] == coletor_vale_sel]
             else:
@@ -418,8 +422,6 @@ else:
                 st.info("Nenhum vale encontrado para os filtros selecionados.")
             else:
                 st.metric("Total de Vales Listados", f"R$ {vales_filtrados_historico['valor_vale'].sum():.2f}")
-                
-                # NOVO: Exibição em formato igual ao de equipamentos (Expander com foto e detalhes)
                 for idx, row in vales_filtrados_historico.sort_values(by="data", ascending=False).iterrows():
                     with st.expander(f"📉 Data: {row['data']} | Coletor: {row['coletor']} | Valor: R$ {float(row['valor_vale']):.2f}"):
                         st.write(f"**Descrição/Motivo:** {row['descricao']}")
@@ -429,7 +431,7 @@ else:
                         else:
                             st.caption("⚠️ Este vale antigo não possui foto de comprovante.")
 
-        # ----------------- ABA 3: SERVIÇOS/PREMIAÇÕES (ADICIONADA) -----------------
+        # ----------------- ABA 3: SERVIÇOS/PREMIAÇÕES -----------------
         with sub_menu_adm[2]:
             st.subheader("🏅 Registrar Serviço Extra / Premiação")
             coletores_premios = [u["nome_completo"] for u in res_users_data if u.get("cargo") == "COLETOR"]
@@ -481,7 +483,7 @@ else:
                         st.rerun()
 
     # =========================================================================
-    # PERFIL COLETOR
+    # PERFIL COLETOR (TOTALMENTE PRESERVADO)
     # =========================================================================
     else:
         menu = st.tabs(["📲 Enviar Coleta", "📊 Minhas Coletas", "💰 Meus Vales", "📄 Comprovantes"])
@@ -550,9 +552,6 @@ else:
             except Exception:
                 df = pd.DataFrame(columns=["id", "data", "coletor", "quantidade", "foto_url", "status", "valor_total", "pago"])
                 
-            if df.empty and datetime.now().date(): # Evita erro visual se vazio
-                pass
-                
             df['data_dt'] = pd.to_datetime(df['data']).dt.date if not df.empty else None
             dados_coletor = df[(df['data_dt'] >= c_data_ini) & (df['data_dt'] <= c_data_fim)] if not df.empty else pd.DataFrame()
             
@@ -584,7 +583,6 @@ else:
             total_ja_pago_c = aprovadas[aprovadas["pago"] == True]["valor_total"].sum() if not aprovadas.empty else 0.0
             total_nao_pago_c = (aprovadas[aprovadas["pago"] != True]["valor_total"].sum() if not aprovadas.empty else 0.0) + float(premiacoes_dele)
             
-            # Conta Líquida do Coletor calculada e formatada
             total_liquido_coletor = float(total_nao_pago_c) - float(vales_dele)
             
             c1, c2, c3 = st.columns(3)
@@ -600,7 +598,6 @@ else:
             
             st.markdown("### Envios do Período")
             
-            # Montagem da lista unificada de itens para o expander (Coletas + Premiações)
             lista_expander = []
             if not dados_coletor.empty:
                 for idx, row in dados_coletor.iterrows():
@@ -620,12 +617,10 @@ else:
             if not lista_expander:
                 st.info("Nenhuma movimentação encontrada para este período.")
             else:
-                # Ordena os itens pela data de forma decrescente (mais recentes primeiro)
                 lista_expander_ordenada = sorted(lista_expander, key=lambda x: x['data'], reverse=True)
-                
                 for item in lista_expander_ordenada:
                     if item["tipo"] == "PREMIACAO":
-                        with st.expander(f"🏅 Data: {item['data']} | Servicio Extra / Premiação"):
+                        with st.expander(f"🏅 Data: {item['data']} | Serviço Extra / Premiação"):
                             st.write(f"**Valor:** R$ {float(item['valor_total']):.2f}")
                             st.write(f"**Descrição:** {item['descricao']}")
                     else:
@@ -641,7 +636,6 @@ else:
                                 link_foto = item['foto_url']
                                 if link_foto: st.image(link_foto, width=150)
 
-        # ----------------- ABA 3: MEUS VALES DO COLETOR (ATUALIZADA) -----------------
         with menu[2]:
             st.header("🔑 Meus Adiantamentos (Vales)")
             try:
@@ -660,8 +654,6 @@ else:
                     st.info("Nenhum vale registrado para o período selecionado.")
                 else:
                     st.metric("Total em Vales no Período", f"R$ {vales_coletor['valor_vale'].sum():.2f}")
-                    
-                    # NOVO: Exibição no painel do coletor com suporte a visualização de imagem
                     for idx, row in vales_coletor.sort_values(by="data", ascending=False).iterrows():
                         with st.expander(f"📉 Data: {row['data']} | Valor: R$ {float(row['valor_vale']):.2f}"):
                             st.write(f"**Descrição:** {row['descricao']}")
