@@ -160,8 +160,8 @@ else:
             df_bruto_premiacoes = pd.DataFrame(columns=["id", "data", "coletor", "valor_premiacao", "descricao"])
             lista_coletores = ["Todos"]
 
-        # Abas de Navegação do ADM (Adicionado Serviços/Premiações)
-        sub_menu_adm = st.tabs(["📋 Gestão de Coletas", "📉 Registrar/Ver Vales", "🏅 Serviços/Premiações", "👤 Cadastrar Usuários"])
+        # Abas de Navegação do ADM
+        sub_menu_adm = st.tabs(["📋 Gestão de Coletas", "📉 Registrar/Ver Vales", "👤 Cadastrar Usuários"])
         
         # ----------------- ABA 1: GESTÃO DE COLETAS -----------------
         with sub_menu_adm[0]:
@@ -189,7 +189,7 @@ else:
             else:
                 df_filtrado = df_bruto_coletas.copy()
 
-            # Filtragem de vales paralela
+            # Filtragem de vales
             if not df_bruto_vales.empty:
                 df_bruto_vales['data_dt'] = pd.to_datetime(df_bruto_vales['data']).dt.date
                 vales_financeiro = df_bruto_vales[(df_bruto_vales['data_dt'] >= data_inicio) & (df_bruto_vales['data_dt'] <= data_fim)].copy()
@@ -198,7 +198,7 @@ else:
             else:
                 vales_financeiro = df_bruto_vales.copy()
 
-            # Filtragem de premiações paralela
+            # Filtragem de premiações (Tabela Nova)
             if not df_bruto_premiacoes.empty:
                 df_bruto_premiacoes['data_dt'] = pd.to_datetime(df_bruto_premiacoes['data']).dt.date
                 premiacoes_financeiro = df_bruto_premiacoes[(df_bruto_premiacoes['data_dt'] >= data_inicio) & (df_bruto_premiacoes['data_dt'] <= data_fim)].copy()
@@ -215,7 +215,6 @@ else:
             with container_botoes_massa:
                 if coletor_sel != "Todos" and not nao_pagas_lista.empty:
                     confirma_pagamento = st.checkbox(f"🔒 Desbloquear botão de pagamento em massa para {coletor_sel}", key="chk_confirma")
-                    
                     if confirma_pagamento:
                         if st.button(f"💰 Marcar TODAS as Coletas de {coletor_sel} como Pagas", type="primary", use_container_width=True):
                             with st.spinner(f"Processando pagamento em massa..."):
@@ -253,45 +252,35 @@ else:
             
             st.subheader("💵 Fechamento Financeiro")
             total_vales = vales_financeiro["valor_vale"].sum() if not vales_financeiro.empty else 0.0
+            total_coletas_bruto = aprovados_periodo["valor_total"].sum() if not aprovados_periodo.empty else 0.0
             total_premiacoes = premiacoes_financeiro["valor_premiacao"].sum() if not premiacoes_financeiro.empty else 0.0
-            
-            # Conta Bruta inclui o valor aprovado das coletas + as premiações inseridas
-            total_bruto = (aprovados_periodo["valor_total"].sum() if not aprovados_periodo.empty else 0.0) + float(total_premiacoes)
             total_ja_pago = ja_pagas_lista["valor_total"].sum() if not ja_pagas_lista.empty else 0.0
-            total_nao_pago_adm = (nao_pagas_lista["valor_total"].sum() if not nao_pagas_lista.empty else 0.0) + float(total_premiacoes)
             
-            # --- LÓGICA FINANCEIRA DEFINITIVA (MANTÉM O NEGATIVO CORRETO DE -324) ---
-            total_vales = vales_financeiro["valor_vale"].sum() if not vales_financeiro.empty else 0.0
-            total_bruto = aprovados_periodo["valor_total"].sum() if not aprovados_periodo.empty else 0.0
-            total_ja_pago = ja_pagas_lista["valor_total"].sum() if not ja_pagas_lista.empty else 0.0
-            total_nao_pago_adm = nao_pagas_lista["valor_total"].sum() if not nao_pagas_lista.empty else 0.0
+            # Novo cálculo: Bruto total junta aparelhos + as premiações diretas
+            total_bruto_geral = float(total_coletas_bruto) + float(total_premiacoes)
             
-            # Cálculo do saldo real entre Produção e Vales
-            saldo_trabalho = float(total_bruto) - float(total_vales)
+            # Conta matemática real com a premiação somando
+            saldo_trabalho = total_bruto_geral - float(total_vales)
             
             if saldo_trabalho < 0:
-                # Se os vales forem maiores que a produção, o Líquido mostra o saldo devedor puro (Ex: -324.00)
                 total_liquido = saldo_trabalho
             else:
-                # Se ele tiver saldo positivo, deduzimos o que já foi pago por Pix
                 total_liquido = max(0.0, saldo_trabalho - float(total_ja_pago))
-
-            # Layout das 4 métricas idênticas na tela
-            cm1, cm2, cm3, cm4 = st.columns(4)
-            cm1.metric("Bruto Período", f"R$ {total_bruto:.2f}")
-            cm2.metric("Valor Já Pago", f"R$ {total_ja_pago:.2f}")
-            cm3.metric("Desconto Vales (-)", f"R$ {total_vales:.2f}")
             
-            # Exibe o valor negativo em vermelho perfeitamente!
-            cm4.metric("Líquido a Pagar", f"R$ {total_liquido:.2f}")
+            # Layout expandido para 5 métricas organizadas
+            cm1, cm2, cm3, cm4, cm5 = st.columns(5)
+            cm1.metric("Bruto Aparelhos", f"R$ {total_coletas_bruto:.2f}")
+            cm2.metric("Premiações (+)", f"R$ {total_premiacoes:.2f}")
+            cm3.metric("Valor Já Pago", f"R$ {total_ja_pago:.2f}")
+            cm4.metric("Desconto Vales (-)", f"R$ {total_vales:.2f}")
+            cm5.metric("Líquido a Pagar", f"R$ {total_liquido:.2f}")
             
-            # Mensagens de alerta inteligentes para o administrador
             if total_liquido < 0:
-                st.error(f"🔴 **Saldo Devedor:** Este coletor pegou mais vales do que produziu e está **DEVENDO R$ {abs(total_liquido):.2f}**!")
+                st.error(f"🔴 **Saldo Devedor:** Este coletor está **DEVENDO R$ {abs(total_liquido):.2f}** (Os vales superaram os ganhos com aparelhos e premiações).")
             elif total_liquido == 0 and total_ja_pago > 0:
-                st.success("🟢 **Fechamento Concluído:** A conta deste período está totalmente quitada e sem pendências!")
+                st.success("🟢 **Fechamento Concluído:** A conta deste período está totalmente quitada!")
 
-            # --- TEXTO DO RECIBO CORRIGIDO ---
+            # --- TEXTO DO RECIBO COM PREMIAÇÃO ---
             container_recibo = st.container()
             with container_recibo:
                 if coletor_sel != "Todos":
@@ -309,7 +298,8 @@ else:
                         f"*Período:* {data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')}\n"
                         f"-----------------------------\n"
                         f"📱 *Total de Aparelhos:* {total_aparelhos} un\n"
-                        f"💰 *Total Bruto Aprovado:* R$ {total_bruto:.2f}\n"
+                        f"💰 *Total Aparelhos:* R$ {total_coletas_bruto:.2f}\n"
+                        f"🎁 *Premiações/Serviços Extras:* R$ {total_premiacoes:.2f}\n"
                         f"📉 *Desconto em Vales:* R$ {total_vales:.2f}\n"
                         f"💵 *Valor Já Pago (Pix):* R$ {total_ja_pago:.2f}\n"
                         f"-----------------------------\n"
@@ -318,10 +308,10 @@ else:
                         f"-----------------------------\n"
                         f"Gerado em: {datetime.now().strftime('%d/%m/%Y às %H:%M')}"
                     )
-                    
-                    st.markdown("#### 📋 Texto do Recibo (Clique no ícone superior direito para copiar)")
+                    chave_dinamica_recibo = f"txt_recibo_{coletor_sel}_{data_inicio}_{data_fim}"
+                    st.markdown("#### 📋 Texto do Recibo (Pronto para copiar)")
                     st.code(texto_recibo, language="text")
-                    
+            
             st.markdown("#### Detalhes dos Aprovados")
             if aprovados_periodo.empty:
                 st.info("Nenhuma coleta aprovada neste período.")
@@ -340,7 +330,7 @@ else:
                                     supabase.table("coletas").update({"pago": True}).eq("id", row["id"]).execute()
                                 st.rerun()
                     st.markdown("---")
-
+                    
         # ----------------- ABA 2: REGISTRAR/VER VALES (TOTALMENTE ATUALIZADA) -----------------
         with sub_menu_adm[1]:
             st.subheader("💰 Registrar Vale / Adiantamento")
