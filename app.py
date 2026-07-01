@@ -1,18 +1,28 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import time
 import uuid  # Gerador de tokens ultra-seguros
 from supabase import create_client, Client
 from io import BytesIO
-from PIL import Image  # Para a Função 4 (Compactação de fotos)
+from PIL import Image  # Para Compactação de fotos
 import urllib.parse
+from streamlit_cookies_controller import CookieController  # <-- NOVA BIBLIOTECA PARA COOKIES
 
 # Configuração da página (otimizada para celular)
 st.set_page_config(page_title="Sistema Vivo Coletas", layout="centered", initial_sidebar_state="collapsed")
 
 # VALOR PADRÃO POR COLETA
 VALOR_POR_COLETA = 10.0
+
+# Inicializa o controlador de cookies de forma segura
+cookies = CookieController()
+
+# --- FUNÇÃO DE AJUSTE DE HORÁRIO OFICIAL DE BRASÍLIA (UTC-3) ---
+def obter_agora_brasilia():
+    """Retorna o datetime atual ajustado manualmente para o fuso de Brasília (UTC-3)"""
+    fuso_brasilia = timezone(timedelta(hours=-3))
+    return datetime.now(fuso_brasilia)
 
 # ----------------- CONEXÃO COM O BANCO DE DADOS (SUPABASE) -----------------\
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
@@ -29,25 +39,18 @@ def extrair_url_valida(foto_obj):
     """Garante que obteremos uma URL válida de internet e evita que o st.image quebre"""
     if not foto_obj:
         return None
-    
-    # Se o Supabase retornar um dicionário com a URL pública dentro
     if isinstance(foto_obj, dict):
         url = foto_obj.get("publicUrl") or foto_obj.get("public_url")
     else:
         url = str(foto_obj).strip()
-        
-    # Proteção contra valores nulos em formato de texto ou vazios
     if not url or url.lower() in ["none", "null", "undefined", ""]:
         return None
-        
-    # O Streamlit só aceita URLs de internet que comecem com http:// ou https://
     if url.startswith("http://") or url.startswith("https://"):
         return url
-        
     return None
 
 # ----------------- OTIMIZAÇÃO: CACHE PARA LISTAGEM DE USUÁRIOS -----------------\
-@st.cache_data(ttl=600)  # Guarda a lista de usuários por 10 minutos para acelerar o app
+@st.cache_data(ttl=600)
 def listar_usuarios_cache():
     try:
         resposta = supabase.table("usuarios").select("*").execute()
@@ -56,7 +59,8 @@ def listar_usuarios_cache():
         return []
 
 # ----------------- INICIALIZAÇÃO PREVENTIVA DE TODO O STATE -----------------\
-data_hoje = datetime.now().date()
+agora_br = obter_agora_brasilia()
+data_hoje = agora_br.date()
 primeiro_dia_mes = data_hoje.replace(day=1)
 
 if "logado" not in st.session_state:
@@ -68,7 +72,6 @@ if "logado" not in st.session_state:
 if "reset_ctr" not in st.session_state:
     st.session_state["reset_ctr"] = 0
 
-# Inicializa chaves dos filtros se não existirem
 if "input_data_ini" not in st.session_state:
     st.session_state["input_data_ini"] = primeiro_dia_mes
 if "input_data_fim" not in st.session_state:
@@ -76,34 +79,42 @@ if "input_data_fim" not in st.session_state:
 if "input_coletor_sel" not in st.session_state:
     st.session_state["input_coletor_sel"] = "Todos"
 
-# Estados de filtros adicionais (ADMIN)
 if "v_adm_filtro_inicio" not in st.session_state:
     st.session_state["v_adm_filtro_inicio"] = primeiro_dia_mes
 if "v_adm_filtro_fim" not in st.session_state:
     st.session_state["v_adm_filtro_fim"] = data_hoje
 
-# Estados dos filtros do Coletor
 if "c_filtro_inicio" not in st.session_state:
     st.session_state["c_filtro_inicio"] = primeiro_dia_mes
 if "c_filtro_fim" not in st.session_state:
     st.session_state["c_filtro_fim"] = data_hoje
 
-# --- FUNÇÃO DA ESTRATÉGIA DE LIMPEZA DE FILTROS ---
 def limpar_filtros_callback():
     st.session_state["input_data_ini"] = primeiro_dia_mes
     st.session_state["input_data_fim"] = data_hoje
     st.session_state["input_coletor_sel"] = "Todos"
 
-# ----------------- RECUPERAÇÃO DE SESSÃO VIA TOKEN (RESISTENTE AO F5) -----------------\
-if not st.session_state["logado"] and "session" in st.query_params:
-    token_url = st.query_params["session"]
+# ----------------- RECUPERAÇÃO DE SESSÃO AUTOMÁTICA (COOKIES / URL) -----------------\
+token_recuperado = None
+
+# 1º Tenta recuperar pelo Cookie salvo no aparelho do usuário
+cookie_token = cookies.get("vivo_coletas_session")
+if cookie_token:
+    token_recuperado = cookie_token
+# 2º Se não tiver cookie, tenta ler pela URL (F5 ou link direto)
+elif "session" in st.query_params:
+    token_recuperado = st.query_params["session"]
+
+# Se encontrou um token válido de alguma das formas, faz o login invisível e automático
+if not st.session_state["logado"] and token_recuperado:
     try:
-        resposta = supabase.table("usuarios").select("*").eq("session_token", token_url).execute()
+        resposta = supabase.table("usuarios").select("*").eq("session_token", token_recuperado).execute()
         if resposta.data:
             st.session_state["logado"] = True
             st.session_state["usuario_atual"] = resposta.data[0]["usuario"]
             st.session_state["nome_completo_atual"] = resposta.data[0]["nome_completo"]
             st.session_state["cargo_atual"] = resposta.data[0]["cargo"]
+            st.query_params["session"] = token_recuperado
     except Exception:
         pass 
 
@@ -116,6 +127,9 @@ if not st.session_state["logado"]:
     user_input = st.text_input("Usuário (Login):").strip().lower()
     pass_input = st.text_input("Senha:", type="password")
     
+    # Caixinha de marcação para salvar a sessão no aparelho
+    lembrar_mim = st.checkbox("Manter-me conectado neste aparelho", value=True)
+    
     if st.button("Entrar", type="primary", use_container_width=True):
         try:
             resposta = supabase.table("usuarios").select("*").eq("usuario", user_input).eq("senha", str(pass_input)).execute()
@@ -125,6 +139,10 @@ if not st.session_state["logado"]:
                 novo_token = str(uuid.uuid4())
                 id_usuario = user_valido[0]["id"]
                 supabase.table("usuarios").update({"session_token": novo_token}).eq("id", id_usuario).execute()
+                
+                # Se ativado, salva o Cookie no aparelho por 30 dias (2592000 segundos)
+                if lembrar_mim:
+                    cookies.set("vivo_coletas_session", novo_token, max_age=2592000)
                 
                 st.session_state["logado"] = True
                 st.session_state["usuario_atual"] = user_input
@@ -147,7 +165,9 @@ else:
     
     if col_logout.button("Sair", use_container_width=True):
         try:
+            # Apaga o token do banco e o cookie do navegador ao deslogar voluntariamente
             supabase.table("usuarios").update({"session_token": None}).eq("usuario", st.session_state["usuario_atual"]).execute()
+            cookies.remove("vivo_coletas_session")
         except Exception:
             pass
             
@@ -164,7 +184,6 @@ else:
     if st.session_state["cargo_atual"] == "ADM":
         st.subheader("🛡️ Painel do Administrador")
         
-        # Carregamento global bruto dos dados
         try:
             res_coletas = supabase.table("coletas").select("*").execute()
             res_vales = supabase.table("vales_coleta").select("*").execute()
@@ -188,7 +207,6 @@ else:
             df_bruto_premiacoes = pd.DataFrame(columns=["id", "data", "coletor", "valor_premiacao", "descricao"])
             lista_coletores = ["Todos"]
 
-        # Abas de Navegação do ADM
         sub_menu_adm = st.tabs(["📋 Gestão de Coletas", "📉 Registrar/Ver Vales", "🏅 Serviços/Premiações", "👤 Cadastrar Usuários"])
         
         # ----------------- ABA 1: GESTÃO DE COLETAS -----------------
@@ -207,7 +225,6 @@ else:
             st.button("❌ Limpar Filtros de Coletas", on_click=limpar_filtros_callback, use_container_width=True)
             st.markdown("---")
 
-            # Filtragem dos dados de coletas
             if not df_bruto_coletas.empty:
                 df_bruto_coletas['data_dt'] = pd.to_datetime(df_bruto_coletas['data']).dt.date
                 df_filtrado = df_bruto_coletas[(df_bruto_coletas['data_dt'] >= data_inicio) & (df_bruto_coletas['data_dt'] <= data_fim)].copy()
@@ -216,7 +233,6 @@ else:
             else:
                 df_filtrado = df_bruto_coletas.copy()
 
-            # Filtragem de vales paralela para o período
             if not df_bruto_vales.empty:
                 df_bruto_vales['data_dt'] = pd.to_datetime(df_bruto_vales['data']).dt.date
                 vales_financeiro = df_bruto_vales[(df_bruto_vales['data_dt'] >= data_inicio) & (df_bruto_vales['data_dt'] <= data_fim)].copy()
@@ -225,7 +241,6 @@ else:
             else:
                 vales_financeiro = df_bruto_vales.copy()
 
-            # Filtragem de premiações para o período
             if not df_bruto_premiacoes.empty:
                 df_bruto_premiacoes['data_dt'] = pd.to_datetime(df_bruto_premiacoes['data']).dt.date
                 premiacoes_financeiro = df_bruto_premiacoes[(df_bruto_premiacoes['data_dt'] >= data_inicio) & (df_bruto_premiacoes['data_dt'] <= data_fim)].copy()
@@ -300,7 +315,7 @@ else:
             else:
                 st.info(f"🔵 **Líquido Final:** Realize o acerto de **R$ {total_liquido:.2f}** com o coletor.")
 
-            # --- TEXTO DO RECIBO ---
+            # --- TEXTO DO RECIBO (FUSO BRASÍLIA) ---
             container_recibo = st.container()
             with container_recibo:
                 if coletor_sel != "Todos":
@@ -318,12 +333,11 @@ else:
                         f"-----------------------------\n"
                         f"🧮 *Valor Líquido a Pagar:* R$ {total_liquido:.2f}\n"
                         f"-----------------------------\n"
-                        f"Gerado em: {datetime.now().strftime('%d/%m/%Y às %H:%M')}"
+                        f"Gerado em: {obter_agora_brasilia().strftime('%d/%m/%Y às %H:%M')}"
                     )
                     st.markdown("#### 📋 Texto do Recibo (Pronto para copiar)")
                     st.code(texto_recibo, language="text")
             
-            # --- DETALHES DE HISTÓRICO VISUAL DAS COLETAS ---
             st.markdown("#### Histórico e Controle Visual de Ganhos")
             
             lista_ganhos_adm = []
@@ -369,7 +383,7 @@ else:
             if coletores_vales:
                 coletor_vale = st.selectbox("Selecione o Coletor para o Vale:", coletores_vales, key=f"sel_vale_{st.session_state['reset_ctr']}")
                 valor_vale_input = st.number_input("Valor do Adiantamento (R$):", min_value=1.0, step=5.0, value=10.0, key=f"val_vale_{st.session_state['reset_ctr']}")
-                data_vale = st.date_input("Data do Vale:", datetime.now(), key=f"dat_vale_{st.session_state['reset_ctr']}")
+                data_vale = st.date_input("Data do Vale:", obter_agora_brasilia().date(), key=f"dat_vale_{st.session_state['reset_ctr']}")
                 motivo_vale = st.text_input("Observação/Motivo (Opcional):", value="Adiantamento de Coletas", key=f"mot_vale_{st.session_state['reset_ctr']}")
                 
                 foto_vale = st.file_uploader("Selecione ou tire a foto do comprovante do vale:", type=["png", "jpg", "jpeg"], key=f"foto_vale_{st.session_state['reset_ctr']}")
@@ -385,7 +399,7 @@ else:
                                 img.save(buffer_memoria, format="JPEG", quality=75, optimize=True)
                                 conteudo_foto = buffer_memoria.getvalue()
                                 
-                                nome_foto_nuvem = f"vale_{datetime.now().strftime('%Y%m%d%H%M%S')}_{st.session_state['usuario_atual']}.jpg"
+                                nome_foto_nuvem = f"vale_{obter_agora_brasilia().strftime('%Y%m%d%H%M%S')}_{st.session_state['usuario_atual']}.jpg"
                                 
                                 supabase.storage.from_("comprovantes").upload(
                                     path=nome_foto_nuvem, file=conteudo_foto,
@@ -454,7 +468,7 @@ else:
             if coletores_premios:
                 coletor_premio = st.selectbox("Selecione o Coletor:", coletores_premios, key=f"sel_premio_{st.session_state['reset_ctr']}")
                 valor_premio_input = st.number_input("Valor da Premiação (R$):", min_value=1.0, step=5.0, value=50.0, key=f"val_premio_{st.session_state['reset_ctr']}")
-                data_premio = st.date_input("Data do Lançamento:", datetime.now(), key=f"dat_premio_{st.session_state['reset_ctr']}")
+                data_premio = st.date_input("Data do Lançamento:", obter_agora_brasilia().date(), key=f"dat_premio_{st.session_state['reset_ctr']}")
                 motivo_premio = st.text_input("Descrição/Motivo:", value="Meta Atingida", key=f"mot_premio_{st.session_state['reset_ctr']}")
                 
                 if st.button("Lançar Premiação", type="primary"):
@@ -522,7 +536,8 @@ else:
                             img.save(buffer_memoria, format="JPEG", quality=75, optimize=True)
                             conteudo_foto = buffer_memoria.getvalue()
                             
-                            nome_foto_nuvem = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{st.session_state['usuario_atual']}.jpg"
+                            # Nome do arquivo usa o horário oficial de Brasília
+                            nome_foto_nuvem = f"{obter_agora_brasilia().strftime('%Y%m%d%H%M%S')}_{st.session_state['usuario_atual']}.jpg"
                             
                             supabase.storage.from_("comprovantes").upload(
                                 path=nome_foto_nuvem, file=conteudo_foto,
@@ -531,8 +546,9 @@ else:
                             
                             foto_url_final = supabase.storage.from_("comprovantes").get_public_url(nome_foto_nuvem)
                             
+                            # Gravação da data usando o dia oficial de Brasília
                             novo_registro = {
-                                "data": datetime.now().strftime("%Y-%m-%d"), 
+                                "data": obter_agora_brasilia().strftime("%Y-%m-%d"), 
                                 "coletor": st.session_state['nome_completo_atual'], 
                                 "quantidade": int(quantidade),
                                 "foto_url": foto_url_final, 
@@ -582,7 +598,6 @@ else:
             df['data_dt'] = pd.to_datetime(df['data']).dt.date if not df.empty else None
             dados_coletor = df[(df['data_dt'] >= c_data_ini) & (df['data_dt'] <= c_data_fim)] if not df.empty else pd.DataFrame()
             
-            # Busca as Premiações do Coletor
             try:
                 res_premiacoes_c = supabase.table("premiacoes").select("*").eq("coletor", st.session_state['nome_completo_atual']).execute()
                 df_premiacoes_c = pd.DataFrame(res_premiacoes_c.data) if res_premiacoes_c.data else pd.DataFrame(columns=["data", "valor_premiacao", "descricao"])
@@ -593,7 +608,6 @@ else:
             premiacoes_dele_filtrado = df_premiacoes_c[(df_premiacoes_c['data_dt'] >= c_data_ini) & (df_premiacoes_c['data_dt'] <= c_data_fim)] if not df_premiacoes_c.empty else pd.DataFrame()
             total_premiacoes_c = float(premiacoes_dele_filtrado["valor_premiacao"].sum()) if not premiacoes_dele_filtrado.empty else 0.0
 
-            # Busca os Vales do Coletor
             try:
                 res_vales_c = supabase.table("vales_coleta").select("*").eq("coletor", st.session_state['nome_completo_atual']).execute()
                 df_vales = pd.DataFrame(res_vales_c.data) if res_vales_c.data else pd.DataFrame(columns=["data", "valor_vale"])
@@ -609,10 +623,8 @@ else:
             aprovadas = dados_coletor[dados_coletor["status"] == "Aprovado"] if not dados_coletor.empty else pd.DataFrame()
             total_coletas_c = float(aprovadas["valor_total"].sum()) if not aprovadas.empty else 0.0
             
-            # MATEMÁTICA IDÊNTICA SOLICITADA: Líquido = (Bruto + Premiações) - Vales
             total_liquido_coletor = (total_coletas_c + total_premiacoes_c) - total_vales_c
             
-            # ----------------- CAIXAS DE VISÃO 100% IDÊNTICAS AO ADM -----------------
             cm1, cm2, cm3, cm4 = st.columns(4)
             cm1.metric("Bruto Aparelhos", f"R$ {total_coletas_c:.2f}")
             cm2.metric("Premiações (+)", f"R$ {total_premiacoes_c:.2f}")

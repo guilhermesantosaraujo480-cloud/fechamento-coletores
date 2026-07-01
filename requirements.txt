@@ -2,3 +2,4 @@ streamlit
 pandas
 supabase
 Pillow
+streamlit-cookies-controller==0.0.4
