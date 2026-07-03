@@ -331,7 +331,7 @@ else:
                         f"🎁 *Premiações/Extras:* R$ {total_premiacoes:.2f}\n"
                         f"📉 *Desconto em Vales:* R$ {total_vales:.2f}\n"
                         f"-----------------------------\n"
-                        f"🧮 *Valor Líquido a Pagar:* R$ {total_liquido:.2f}\n"
+                        f"🧮 *Valor Líquido:* R$ {total_liquido:.2f}\n"
                         f"-----------------------------\n"
                         f"Gerado em: {obter_agora_brasilia().strftime('%d/%m/%Y às %H:%M')}"
                     )
