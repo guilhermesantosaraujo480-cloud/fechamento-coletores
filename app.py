@@ -59,7 +59,7 @@ def listar_usuarios_cache():
         return []
 
 # ----------------- INICIALIZAÇÃO PREVENTIVA DE TODO O STATE -----------------\
-agora_br = obtener_agora_brasilia()
+agora_br = obter_agora_brasilia()
 data_hoje = agora_br.date()
 primeiro_dia_mes = data_hoje.replace(day=1)
 
