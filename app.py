@@ -7,7 +7,7 @@ from supabase import create_client, Client
 from io import BytesIO
 from PIL import Image  # Para Compactação de fotos
 import urllib.parse
-from streamlit_cookies_controller import CookieController  # <-- NOVA BIBLIOTECA PARA COOKIES
+from streamlit_cookies_controller import CookieController  # Controlador de Cookies
 
 # Configuração da página (otimizada para celular)
 st.set_page_config(page_title="Sistema Vivo Coletas", layout="centered", initial_sidebar_state="collapsed")
@@ -59,7 +59,7 @@ def listar_usuarios_cache():
         return []
 
 # ----------------- INICIALIZAÇÃO PREVENTIVA DE TODO O STATE -----------------\
-agora_br = obter_agora_brasilia()
+agora_br = obtener_agora_brasilia()
 data_hoje = agora_br.date()
 primeiro_dia_mes = data_hoje.replace(day=1)
 
@@ -97,15 +97,12 @@ def limpar_filtros_callback():
 # ----------------- RECUPERAÇÃO DE SESSÃO AUTOMÁTICA (COOKIES / URL) -----------------\
 token_recuperado = None
 
-# 1º Tenta recuperar pelo Cookie salvo no aparelho do usuário
 cookie_token = cookies.get("vivo_coletas_session")
 if cookie_token:
     token_recuperado = cookie_token
-# 2º Se não tiver cookie, tenta ler pela URL (F5 ou link direto)
 elif "session" in st.query_params:
     token_recuperado = st.query_params["session"]
 
-# Se encontrou um token válido de alguma das formas, faz o login invisível e automático
 if not st.session_state["logado"] and token_recuperado:
     try:
         resposta = supabase.table("usuarios").select("*").eq("session_token", token_recuperado).execute()
@@ -127,7 +124,6 @@ if not st.session_state["logado"]:
     user_input = st.text_input("Usuário (Login):").strip().lower()
     pass_input = st.text_input("Senha:", type="password")
     
-    # Caixinha de marcação para salvar a sessão no aparelho
     lembrar_mim = st.checkbox("Manter-me conectado neste aparelho", value=True)
     
     if st.button("Entrar", type="primary", use_container_width=True):
@@ -140,7 +136,6 @@ if not st.session_state["logado"]:
                 id_usuario = user_valido[0]["id"]
                 supabase.table("usuarios").update({"session_token": novo_token}).eq("id", id_usuario).execute()
                 
-                # Se ativado, salva o Cookie no aparelho por 30 dias (2592000 segundos)
                 if lembrar_mim:
                     cookies.set("vivo_coletas_session", novo_token, max_age=2592000)
                 
@@ -165,7 +160,6 @@ else:
     
     if col_logout.button("Sair", use_container_width=True):
         try:
-            # Apaga o token do banco e o cookie do navegador ao deslogar voluntariamente
             supabase.table("usuarios").update({"session_token": None}).eq("usuario", st.session_state["usuario_atual"]).execute()
             cookies.remove("vivo_coletas_session")
         except Exception:
@@ -182,7 +176,7 @@ else:
     # PERFIL ADMINISTRADOR
     # =========================================================================
     if st.session_state["cargo_atual"] == "ADM":
-        st.subheader("🛡️ Painel do Administrador")
+        st.subheader("🛡️ Painel do Administrator")
         
         try:
             res_coletas = supabase.table("coletas").select("*").execute()
@@ -207,14 +201,9 @@ else:
             df_bruto_premiacoes = pd.DataFrame(columns=["id", "data", "coletor", "valor_premiacao", "descricao"])
             lista_coletores = ["Todos"]
 
-        # CORREÇÃO: Encapsulado num st.container estivo e aplicada uma chave ('key') explícita para forçar a renderização horizontal correta
+        # CORREÇÃO PARTE 1: Filtros isolados dentro de um container próprio para não arrastar o CSS das abas
         with st.container():
-            sub_menu_adm = st.tabs(["📋 Gestão de Coletas", "📉 Registrar/Ver Vales", "🏅 Serviços/Premiações", "👤 Cadastrar Usuários"], key="sub_menu_adm_painel")
-        
-        # ----------------- ABA 1: GESTÃO DE COLETAS -----------------
-        with sub_menu_adm[0]:
             st.markdown("### 🔍 Filtros Gerais do Período")
-            
             col_f1, col_f2, col_f3 = st.columns(3)
             with col_f1:
                 data_inicio = st.date_input("Data Início:", key="input_data_ini")
@@ -227,6 +216,17 @@ else:
             st.button("❌ Limpar Filtros de Coletas", on_click=limpar_filtros_callback, use_container_width=True)
             st.markdown("---")
 
+        # CORREÇÃO PARTE 2: Abas encapsuladas e usando KEY dinâmica baseada no coletor selecionado.
+        # Isso força o navegador a desenhar as abas perfeitamente na horizontal sempre que o filtro mudar.
+        with st.container():
+            nome_limpo_chave = str(coletor_sel).replace(" ", "_")
+            sub_menu_adm = st.tabs(
+                ["📋 Gestão de Coletas", "📉 Registrar/Ver Vales", "🏅 Serviços/Premiações", "📊 Relatório de Uso", "👤 Cadastrar Usuários"], 
+                key=f"tabs_adm_fix_{nome_limpo_chave}"
+            )
+        
+        # ----------------- ABA 1: GESTÃO DE COLETAS -----------------
+        with sub_menu_adm[0]:
             if not df_bruto_coletas.empty:
                 df_bruto_coletas['data_dt'] = pd.to_datetime(df_bruto_coletas['data']).dt.date
                 df_filtrado = df_bruto_coletas[(df_bruto_coletas['data_dt'] >= data_inicio) & (df_bruto_coletas['data_dt'] <= data_fim)].copy()
@@ -296,19 +296,17 @@ else:
                             st.rerun()
                     st.markdown("---")
             
-            # ----------------- FECHAMENTO FINANCEIRO ADM -----------------
             st.subheader("💵 Fechamento Financeiro")
             total_vales = float(vales_financeiro["valor_vale"].sum()) if not vales_financeiro.empty else 0.0
             total_coletas_bruto = float(aprovados_periodo["valor_total"].sum()) if not aprovados_periodo.empty else 0.0
             total_premiacoes = float(premiacoes_financeiro["valor_premiacao"].sum()) if not premiacoes_financeiro.empty else 0.0
-            
             total_liquido = (total_coletas_bruto + total_premiacoes) - total_vales
             
             cm1, cm2, cm3, cm4 = st.columns(4)
             cm1.metric("Bruto Aparelhos", f"R$ {total_coletas_bruto:.2f}")
             cm2.metric("Premiações (+)", f"R$ {total_premiacoes:.2f}")
             cm3.metric("Vales (-)", f"R$ {total_vales:.2f}")
-            cm4.metric("Valor Líquido", f"R$ {total_liquido:.2f}")
+            cm4.metric("Líquido a Pagar", f"R$ {total_liquido:.2f}")
             
             if total_liquido < 0:
                 st.error(f"🔴 **Aviso:** Os vales superaram a produção deste coletor em **R$ {abs(total_liquido):.2f}**.")
@@ -317,7 +315,6 @@ else:
             else:
                 st.info(f"🔵 **Líquido Final:** Realize o acerto de **R$ {total_liquido:.2f}** com o coletor.")
 
-            # --- TEXTO DO RECIBO (FUSO BRASÍLIA) ---
             container_recibo = st.container()
             with container_recibo:
                 if coletor_sel != "Todos":
@@ -333,7 +330,7 @@ else:
                         f"🎁 *Premiações/Extras:* R$ {total_premiacoes:.2f}\n"
                         f"📉 *Desconto em Vales:* R$ {total_vales:.2f}\n"
                         f"-----------------------------\n"
-                        f"🧮 *Valor Líquido:* R$ {total_liquido:.2f}\n"
+                        f"🧮 *Valor Líquido a Pagar:* R$ {total_liquido:.2f}\n"
                         f"-----------------------------\n"
                         f"Gerado em: {obter_agora_brasilia().strftime('%d/%m/%Y às %H:%M')}"
                     )
@@ -489,8 +486,34 @@ else:
             else:
                 st.info("Nenhum coletor cadastrado para receber premiações.")
 
-        # ----------------- ABA 4: CADASTRO DE USUÁRIOS -----------------
+        # ----------------- ABA 4: RELATÓRIO DE USO DOS COMPROVANTES -----------------
         with sub_menu_adm[3]:
+            st.subheader("📊 Relatório de Auditoria: Envio de Comprovantes")
+            st.markdown("Veja quem andou localizando e compartilhando comprovantes de ordens de serviço com os clientes:")
+            
+            try:
+                resposta_logs = supabase.table("logs_comprovantes").select("*").order("data_hora", desc=True).limit(200).execute()
+                dados_logs = resposta_logs.data
+                
+                if not dados_logs:
+                    st.info("ℹ️ Nenhum registro de envio ou busca encontrado até o momento.")
+                else:
+                    df_logs = pd.DataFrame(dados_logs)
+                    df_logs["Horário"] = pd.to_datetime(df_logs["data_hora"]).dt.tz_convert("America/Sao_Paulo").dt.strftime("%d/%m/%Y %H:%M:%S")
+                    
+                    df_logs_vitrine = df_logs[["Horário", "nome_completo", "termo_pesquisado", "os_encontrada"]].rename(
+                        columns={
+                            "nome_completo": "Coletor",
+                            "termo_pesquisado": "Termo Buscado",
+                            "os_encontrada": "OS Encontrada(s)"
+                        }
+                    )
+                    st.dataframe(df_logs_vitrine, use_container_width=True, hide_index=True)
+            except Exception as e:
+                st.error(f"Erro ao carregar o relatório do banco de dados: {e}")
+
+        # ----------------- ABA 5: CADASTRO DE USUÁRIOS -----------------
+        with sub_menu_adm[4]:
             st.subheader("👤 Cadastrar Novo Usuário")
             novo_nome = st.text_input("Nome Completo:", key=f"nn_{st.session_state['reset_ctr']}")
             novo_usuario = st.text_input("Login de Acesso:", key=f"nu_{st.session_state['reset_ctr']}").strip().lower()
@@ -518,9 +541,8 @@ else:
     # PERFIL COLETOR
     # =========================================================================
     else:
-        # CORREÇÃO: Encapsulado num st.container ativo e adicionada uma 'key' para travar a renderização horizontal nos telemóveis/celulares
         with st.container():
-            menu = st.tabs(["📲 Enviar Coleta", "📊 Minhas Coletas", "💰 Meus Vales", "📄 Comprovantes"], key="menu_coletor_abas")
+            menu = st.tabs(["📲 Enviar Coleta", "📊 Minhas Coletas", "💰 Meus Vales", "📄 Comprovantes"], key="tabs_coletor_perfil")
 
         with menu[0]:
             st.header("Novo Envio")
@@ -540,7 +562,6 @@ else:
                             img.save(buffer_memoria, format="JPEG", quality=75, optimize=True)
                             conteudo_foto = buffer_memoria.getvalue()
                             
-                            # Nome do arquivo usa o horário oficial de Brasília
                             nome_foto_nuvem = f"{obter_agora_brasilia().strftime('%Y%m%d%H%M%S')}_{st.session_state['usuario_atual']}.jpg"
                             
                             supabase.storage.from_("comprovantes").upload(
@@ -550,7 +571,6 @@ else:
                             
                             foto_url_final = supabase.storage.from_("comprovantes").get_public_url(nome_foto_nuvem)
                             
-                            # Gravação da data usando o dia oficial de Brasília
                             novo_registro = {
                                 "data": obter_agora_brasilia().strftime("%Y-%m-%d"), 
                                 "coletor": st.session_state['nome_completo_atual'], 
@@ -633,7 +653,7 @@ else:
             cm1.metric("Bruto Aparelhos", f"R$ {total_coletas_c:.2f}")
             cm2.metric("Premiações (+)", f"R$ {total_premiacoes_c:.2f}")
             cm3.metric("Vales (-)", f"R$ {total_vales_c:.2f}")
-            cm4.metric("Valor Líquido", f"R$ {total_liquido_coletor:.2f}")
+            cm4.metric("Líquido a Pagar", f"R$ {total_liquido_coletor:.2f}")
             
             st.markdown("### Envios do Período")
             
@@ -716,6 +736,17 @@ else:
                         st.info("ℹ️ Nenhum comprovante encontrado.")
                     else:
                         st.success(f"🎉 Encontrado(s) {len(dados)} item(ns):")
+                        
+                        # Monitoramento interno silencioso
+                        lista_os_encontradas = ", ".join([str(reg['ordem_servico']) for reg in dados])
+                        registro_log = {
+                            "usuario": st.session_state["usuario_atual"],
+                            "nome_completo": st.session_state["nome_completo_atual"],
+                            "termo_pesquisado": termo_busca,
+                            "os_encontrada": lista_os_encontradas
+                        }
+                        supabase.table("logs_comprovantes").insert(registro_log).execute()
+                        
                         for registro in dados:
                             with st.container():
                                 st.markdown(f"### 📋 OS: {registro['ordem_servico']}")
