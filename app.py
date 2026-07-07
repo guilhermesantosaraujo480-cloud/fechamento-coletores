@@ -306,7 +306,7 @@ else:
             cm1.metric("Bruto Aparelhos", f"R$ {total_coletas_bruto:.2f}")
             cm2.metric("Premiações (+)", f"R$ {total_premiacoes:.2f}")
             cm3.metric("Vales (-)", f"R$ {total_vales:.2f}")
-            cm4.metric("Líquido a Pagar", f"R$ {total_liquido:.2f}")
+            cm4.metric("Valor Líquido", f"R$ {total_liquido:.2f}")
             
             if total_liquido < 0:
                 st.error(f"🔴 **Aviso:** Os vales superaram a produção deste coletor em **R$ {abs(total_liquido):.2f}**.")
@@ -330,7 +330,7 @@ else:
                         f"🎁 *Premiações/Extras:* R$ {total_premiacoes:.2f}\n"
                         f"📉 *Desconto em Vales:* R$ {total_vales:.2f}\n"
                         f"-----------------------------\n"
-                        f"🧮 *Valor Líquido a Pagar:* R$ {total_liquido:.2f}\n"
+                        f"🧮 *Valor Líquido:* R$ {total_liquido:.2f}\n"
                         f"-----------------------------\n"
                         f"Gerado em: {obter_agora_brasilia().strftime('%d/%m/%Y às %H:%M')}"
                     )
@@ -653,7 +653,7 @@ else:
             cm1.metric("Bruto Aparelhos", f"R$ {total_coletas_c:.2f}")
             cm2.metric("Premiações (+)", f"R$ {total_premiacoes_c:.2f}")
             cm3.metric("Vales (-)", f"R$ {total_vales_c:.2f}")
-            cm4.metric("Líquido a Pagar", f"R$ {total_liquido_coletor:.2f}")
+            cm4.metric("Valor Líquido", f"R$ {total_liquido_coletor:.2f}")
             
             st.markdown("### Envios do Período")
             
