@@ -765,3 +765,5 @@ else:
                             st.markdown("---")
                 except Exception as e:
                     st.error(f"Erro na base de dados: {e}")
+                    #
+                    
