@@ -1,5 +1,5 @@
-streamlit==1.35.0
+streamlit>=1.35.0
 supabase==2.5.0
 pandas
 pillow
-streamlit-cookies-controller==0.0.4
+streamlit-cookies-controller==0.1.2
