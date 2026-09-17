@@ -24,7 +24,7 @@ def obter_agora_brasilia():
     fuso_brasilia = timezone(timedelta(hours=-3))
     return datetime.now(fuso_brasilia)
 
-# ----------------- CONEXÃO COM O BANCO DE DADOS (SUPABASE) -----------------\
+# ----------------- CONEXÃO COM O BANCO DE DADOS (SUPABASE) -----------------
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
@@ -49,7 +49,7 @@ def extrair_url_valida(foto_obj):
         return url
     return None
 
-# ----------------- OTIMIZAÇÃO: CACHE PARA LISTAGEM DE USUÁRIOS -----------------\
+# ----------------- OTIMIZAÇÃO: CACHE PARA LISTAGEM DE USUÁRIOS -----------------
 @st.cache_data(ttl=600)
 def listar_usuarios_cache():
     try:
@@ -58,7 +58,77 @@ def listar_usuarios_cache():
     except Exception:
         return []
 
-# ----------------- INICIALIZAÇÃO PREVENTIVA DE TODO O STATE -----------------\
+# ----------------- GERADOR DE EXCEL DOS COLETORES -----------------
+def gerar_relatorio_excel_coletores(df_coletas, df_vales, df_premiacoes, lista_coletores, data_ini, data_fim):
+    """Gera um arquivo Excel (.xlsx) com o total consolidado por coletor"""
+    dados_relatorio = []
+    
+    # Normalizar datas
+    df_c = df_coletas.copy() if not df_coletas.empty else pd.DataFrame(columns=["data", "coletor", "quantidade", "status", "valor_total"])
+    df_v = df_vales.copy() if not df_vales.empty else pd.DataFrame(columns=["data", "coletor", "valor_vale"])
+    df_p = df_premiacoes.copy() if not df_premiacoes.empty else pd.DataFrame(columns=["data", "coletor", "valor_premiacao"])
+    
+    if not df_c.empty and "data" in df_c.columns:
+        df_c['data_dt'] = pd.to_datetime(df_c['data']).dt.date
+        df_c = df_c[(df_c['data_dt'] >= data_ini) & (df_c['data_dt'] <= data_fim) & (df_c['status'] == 'Aprovado')]
+        
+    if not df_v.empty and "data" in df_v.columns:
+        df_v['data_dt'] = pd.to_datetime(df_v['data']).dt.date
+        df_v = df_v[(df_v['data_dt'] >= data_ini) & (df_v['data_dt'] <= data_fim)]
+        
+    if not df_p.empty and "data" in df_p.columns:
+        df_p['data_dt'] = pd.to_datetime(df_p['data']).dt.date
+        df_p = df_p[(df_p['data_dt'] >= data_ini) & (df_p['data_dt'] <= data_fim)]
+        
+    coletores_processar = [c for c in lista_coletores if c != "Todos"]
+    
+    tot_qtd, tot_bruto, tot_prem, tot_val, tot_liq = 0, 0.0, 0.0, 0.0, 0.0
+    
+    for c in coletores_processar:
+        sub_c = df_c[df_c["coletor"] == c] if not df_c.empty else pd.DataFrame()
+        sub_v = df_v[df_v["coletor"] == c] if not df_v.empty else pd.DataFrame()
+        sub_p = df_p[df_p["coletor"] == c] if not df_p.empty else pd.DataFrame()
+        
+        qtd_aparelhos = int(sub_c["quantidade"].sum()) if not sub_c.empty else 0
+        v_bruto = float(sub_c["valor_total"].sum()) if not sub_c.empty else 0.0
+        v_prem = float(sub_p["valor_premiacao"].sum()) if not sub_p.empty else 0.0
+        v_vale = float(sub_v["valor_vale"].sum()) if not sub_v.empty else 0.0
+        v_liq = (v_bruto + v_prem) - v_vale
+        
+        tot_qtd += qtd_aparelhos
+        tot_bruto += v_bruto
+        tot_prem += v_prem
+        tot_val += v_vale
+        tot_liq += v_liq
+        
+        dados_relatorio.append({
+            "Coletor": c,
+            "Aparelhos Coletados (Qtd)": qtd_aparelhos,
+            "Valor Bruto (R$)": round(v_bruto, 2),
+            "Premiações (+) (R$)": round(v_prem, 2),
+            "Vales (-) (R$)": round(v_vale, 2),
+            "Valor Líquido (R$)": round(v_liq, 2)
+        })
+        
+    # Adiciona linha de Totais
+    dados_relatorio.append({
+        "Coletor": "TOTAL GERAL",
+        "Aparelhos Coletados (Qtd)": tot_qtd,
+        "Valor Bruto (R$)": round(tot_bruto, 2),
+        "Premiações (+) (R$)": round(tot_prem, 2),
+        "Vales (-) (R$)": round(tot_val, 2),
+        "Valor Líquido (R$)": round(tot_liq, 2)
+    })
+    
+    df_resumo = pd.DataFrame(dados_relatorio)
+    
+    buffer = BytesIO()
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        df_resumo.to_excel(writer, index=False, sheet_name='Resumo por Coletor')
+    buffer.seek(0)
+    return buffer
+
+# ----------------- INICIALIZAÇÃO PREVENTIVA DE TODO O STATE -----------------
 agora_br = obter_agora_brasilia()
 data_hoje = agora_br.date()
 primeiro_dia_mes = data_hoje.replace(day=1)
@@ -94,7 +164,7 @@ def limpar_filtros_callback():
     st.session_state["input_data_fim"] = data_hoje
     st.session_state["input_coletor_sel"] = "Todos"
 
-# ----------------- RECUPERAÇÃO DE SESSÃO AUTOMÁTICA (COOKIES / URL) -----------------\
+# ----------------- RECUPERAÇÃO DE SESSÃO AUTOMÁTICA (COOKIES / URL) -----------------
 token_recuperado = None
 
 cookie_token = cookies.get("vivo_coletas_session")
@@ -118,7 +188,7 @@ if not st.session_state["logado"] and token_recuperado:
 st.title("📱 Sistema de Coletas")
 st.markdown("---")
 
-# ----------------- TELA DE LOGIN -----------------\
+# ----------------- TELA DE LOGIN -----------------
 if not st.session_state["logado"]:
     st.subheader("🔑 Acesso ao Sistema")
     user_input = st.text_input("Usuário (Login):").strip().lower()
@@ -153,7 +223,7 @@ if not st.session_state["logado"]:
         except Exception as e:
             st.error(f"Erro ao conectar com o banco de dados: {e}")
 
-# ----------------- ÁREA DO SISTEMA (LOGADO) -----------------\
+# ----------------- ÁREA DO SISTEMA (LOGADO) -----------------
 else:
     col_user, col_logout = st.columns([3, 1])
     col_user.write(f"👤 Conectado: **{st.session_state['nome_completo_atual']}** ({st.session_state['cargo_atual']})")
@@ -201,7 +271,6 @@ else:
             df_bruto_premiacoes = pd.DataFrame(columns=["id", "data", "coletor", "valor_premiacao", "descricao"])
             lista_coletores = ["Todos"]
 
-        # CORREÇÃO PARTE 1: Filtros isolados dentro de um container próprio para não arrastar o CSS das abas
         with st.container():
             st.markdown("### 🔍 Filtros Gerais do Período")
             col_f1, col_f2, col_f3 = st.columns(3)
@@ -216,8 +285,6 @@ else:
             st.button("❌ Limpar Filtros de Coletas", on_click=limpar_filtros_callback, use_container_width=True)
             st.markdown("---")
 
-        # CORREÇÃO PARTE 2: Abas encapsuladas e usando KEY dinâmica baseada no coletor selecionado.
-        # Isso força o navegador a desenhar as abas perfeitamente na horizontal sempre que o filtro mudar.
         with st.container():
             nome_limpo_chave = str(coletor_sel).replace(" ", "_")
             sub_menu_adm = st.tabs(
@@ -314,6 +381,20 @@ else:
                 st.success("🟢 **Conta Zerada:** Sem valores pendentes de repasse neste período.")
             else:
                 st.info(f"🔵 **Líquido Final:** Realize o acerto de **R$ {total_liquido:.2f}** com o coletor.")
+
+            # BOTÃO DE EXPORTAÇÃO PARA EXCEL (.XLSX)
+            st.markdown("#### 📊 Exportar Relatório Consolidado")
+            excel_bytes = gerar_relatorio_excel_coletores(
+                df_bruto_coletas, df_bruto_vales, df_bruto_premiacoes,
+                lista_coletores, data_inicio, data_fim
+            )
+            st.download_button(
+                label="📊 Baixar Relatório por Coletores em Excel (.xlsx)",
+                data=excel_bytes,
+                file_name=f"relatorio_coletas_{data_inicio.strftime('%Y%m%d')}_a_{data_fim.strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
 
             container_recibo = st.container()
             with container_recibo:
