@@ -8,6 +8,7 @@ from io import BytesIO
 from PIL import Image  # Para Compactação de fotos
 import urllib.parse
 from streamlit_cookies_controller import CookieController  # Controlador de Cookies
+from modulo_email import renderizar_aba_disparador_emails
 
 # Configuração da página (otimizada para celular)
 st.set_page_config(page_title="Sistema Vivo Coletas", layout="centered", initial_sidebar_state="collapsed")
@@ -293,7 +294,7 @@ else:
             )
         
         # ----------------- ABA 1: GESTÃO DE COLETAS -----------------
-        
+
         with sub_menu_adm[0]:
             if not df_bruto_coletas.empty:
                 df_bruto_coletas['data_dt'] = pd.to_datetime(df_bruto_coletas['data']).dt.date
@@ -618,6 +619,11 @@ else:
                         st.success(f"🎉 {novo_nome} cadastrado com sucesso!")
                         st.session_state["reset_ctr"] += 1
                         st.rerun()
+
+                                # ----------------- ABA 6: ENVIO DE EMAIL -----------------
+
+        with sub_menu_adm[5]:
+            renderizar_aba_disparador_emails(supabase)
 
     # =========================================================================
     # PERFIL COLETOR
