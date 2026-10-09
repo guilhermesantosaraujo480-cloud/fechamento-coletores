@@ -6,6 +6,7 @@ import smtplib
 from email.message import EmailMessage
 from datetime import datetime
 import urllib.parse
+from io import BytesIO, StringIO
 
 # --- TEMPLATE HTML DO E-MAIL ---
 HTML_TEMPLATE = """
@@ -14,24 +15,24 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <style>
-        body { margin: 0; padding: 0; background-color: #f4f5f7; font-family: 'Segoe UI', Arial, sans-serif; color: #333333; }
-        .email-container { max-width: 600px; margin: 30px auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
-        .header-banner { background-color: #ffffff; padding: 30px 30px 15px 30px; text-align: left; border-bottom: 1px solid #f0f0f0; }
-        .logo-text { font-size: 26px; font-weight: bold; color: #660099; letter-spacing: -0.5px; }
-        .logo-text span { color: #333333; font-weight: normal; font-size: 22px; }
-        .content-body { padding: 30px; text-align: left; }
-        .headline { font-size: 22px; font-weight: 700; margin-bottom: 15px; color: #660099; }
-        .message-text { font-size: 15px; line-height: 1.6; margin-bottom: 25px; color: #444444; }
-        .purple-card { background-color: #660099; border-radius: 10px; padding: 25px; margin: 25px 0; color: #ffffff; }
-        .purple-card h2 { margin: 0 0 10px 0; font-size: 18px; color: #ffffff; font-weight: 600; }
-        .purple-card p { margin: 0 0 20px 0; font-size: 14px; color: #f3e6ff; line-height: 1.5; }
-        .address-box { background-color: #f8f0ff; border-left: 4px solid #660099; padding: 15px; margin: 20px 0; border-radius: 0 8px 8px 0; }
-        .address-box p { margin: 0; font-size: 14px; color: #333333; line-height: 1.5; }
-        .btn-container { text-align: center; margin-top: 15px; }
-        .btn-link { display: inline-block; background-color: #ffffff; color: #660099 !important; text-decoration: none; font-size: 14px; font-weight: bold; padding: 14px 32px; border-radius: 25px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); text-transform: uppercase; }
-        .features-box { background-color: #f9f9fb; border: 1px solid #e9e9ee; border-radius: 8px; padding: 18px; margin-top: 25px; }
-        .features-box p { margin: 0; font-size: 13px; line-height: 1.5; color: #666666; }
-        .footer { background-color: #ffffff; padding: 25px 30px; font-size: 11px; color: #888888; text-align: center; border-top: 1px solid #f0f0f0; line-height: 1.5; }
+        body {{ margin: 0; padding: 0; background-color: #f4f5f7; font-family: 'Segoe UI', Arial, sans-serif; color: #333333; }}
+        .email-container {{ max-width: 600px; margin: 30px auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }}
+        .header-banner {{ background-color: #ffffff; padding: 30px 30px 15px 30px; text-align: left; border-bottom: 1px solid #f0f0f0; }}
+        .logo-text {{ font-size: 26px; font-weight: bold; color: #660099; letter-spacing: -0.5px; }}
+        .logo-text span {{ color: #333333; font-weight: normal; font-size: 22px; }}
+        .content-body {{ padding: 30px; text-align: left; }}
+        .headline {{ font-size: 22px; font-weight: 700; margin-bottom: 15px; color: #660099; }}
+        .message-text {{ font-size: 15px; line-height: 1.6; margin-bottom: 25px; color: #444444; }}
+        .purple-card {{ background-color: #660099; border-radius: 10px; padding: 25px; margin: 25px 0; color: #ffffff; }}
+        .purple-card h2 {{ margin: 0 0 10px 0; font-size: 18px; color: #ffffff; font-weight: 600; }}
+        .purple-card p {{ margin: 0 0 20px 0; font-size: 14px; color: #f3e6ff; line-height: 1.5; }}
+        .address-box {{ background-color: #f8f0ff; border-left: 4px solid #660099; padding: 15px; margin: 20px 0; border-radius: 0 8px 8px 0; }}
+        .address-box p {{ margin: 0; font-size: 14px; color: #333333; line-height: 1.5; }}
+        .btn-container {{ text-align: center; margin-top: 15px; }}
+        .btn-link {{ display: inline-block; background-color: #ffffff; color: #660099 !important; text-decoration: none; font-size: 14px; font-weight: bold; padding: 14px 32px; border-radius: 25px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); text-transform: uppercase; }}
+        .features-box {{ background-color: #f9f9fb; border: 1px solid #e9e9ee; border-radius: 8px; padding: 18px; margin-top: 25px; }}
+        .features-box p {{ margin: 0; font-size: 13px; line-height: 1.5; color: #666666; }}
+        .footer {{ background-color: #ffffff; padding: 25px 30px; font-size: 11px; color: #888888; text-align: center; border-top: 1px solid #f0f0f0; line-height: 1.5; }}
     </style>
 </head>
 <body>
@@ -97,7 +98,7 @@ def renderizar_aba_disparador_emails(supabase_client):
     sub_tab1, sub_tab2 = st.tabs(["🚀 Realizar Disparos", "🔑 Gerenciar Contas Remetentes"])
 
     # -------------------------------------------------------------
-    # TAB 1: GERENCIAR CONTAS
+    # TAB 1: GERENCIAR CONTAS REMETENTES
     # -------------------------------------------------------------
     with sub_tab2:
         st.markdown("### Cadastrar Nova Conta de E-mail (Chave de Acesso)")
@@ -166,12 +167,24 @@ def renderizar_aba_disparador_emails(supabase_client):
         st.info(f"✅ **{len(contas_ativas)} conta(s) ativa(s)** disponível(is) para rotação automática de disparos.")
 
         # Upload da Planilha
-        arquivo = st.file_uploader("📂 Faça upload da planilha (.xlsx ou .csv)", type=["xlsx", "csv"])
+        arquivo = st.file_uploader("📂 Faça upload da planilha (.xlsx, .csv ou .txt)", type=["xlsx", "csv", "txt"])
         
         if arquivo:
             try:
-                df = pd.read_csv(arquivo) if arquivo.name.endswith(".csv") else pd.read_excel(arquivo)
-                df.columns = [str(x).strip().lower() for x in df.columns]
+                if arquivo.name.endswith(".xlsx"):
+                    df = pd.read_excel(arquivo)
+                else:
+                    conteudo = arquivo.getvalue().decode('utf-8', errors='ignore')
+                    primeira_linha = conteudo.split('\n')[0] if conteudo else ''
+                    
+                    if '\t' in primeira_linha:
+                        df = pd.read_csv(StringIO(conteudo), sep='\t')
+                    elif ';' in primeira_linha:
+                        df = pd.read_csv(StringIO(conteudo), sep=';')
+                    else:
+                        df = pd.read_csv(StringIO(conteudo), sep=',')
+                
+                df = df.dropna(how='all')
                 st.success(f"📋 Planilha carregada: **{len(df)} registros encontrados**.")
             except Exception as e:
                 st.error(f"Erro ao ler arquivo: {e}")
@@ -197,7 +210,6 @@ def renderizar_aba_disparador_emails(supabase_client):
             if st.button("🚀 Iniciar Disparos em Massa", type="primary", use_container_width=True):
                 barra = st.progress(0)
                 status_txt = st.empty()
-                log_box = st.empty()
 
                 lista_status = []
                 lista_horarios = []
@@ -212,7 +224,7 @@ def renderizar_aba_disparador_emails(supabase_client):
                     meu_email = conta_atual["email"]
                     minha_senha = conta_atual["senha_app"]
 
-                    # Mapeamento direto das colunas da planilha original (sem precisar alterar nada)
+                    # Mapeamento dinâmico das colunas da planilha (suporta acentos e maiúsculas)
                     email_cliente = str(row.get('Email') or row.get('email') or '').strip()
                     nome_cliente = str(row.get('Cliente') or row.get('nome') or 'Cliente').strip()
                     protocolo_cliente = str(row.get('BA') or row.get('protocolo') or '').strip()
@@ -223,19 +235,14 @@ def renderizar_aba_disparador_emails(supabase_client):
                     cep = str(row.get('Cep') or row.get('cep') or '').strip()
 
                     partes_end = []
-                    if rua:
-                        partes_end.append(rua)
-                    if numero:
-                        partes_end.append(f"Nº {numero}")
-                    if bairro:
-                        partes_end.append(bairro)
-                    if cep:
-                        partes_end.append(f"CEP: {cep}")
+                    if rua: partes_end.append(rua)
+                    if numero: partes_end.append(f"Nº {numero}")
+                    if bairro: partes_end.append(bairro)
+                    if cep: partes_end.append(f"CEP: {cep}")
                     endereco_completo = " - ".join(partes_end) if partes_end else "Endereço incompleto na planilha"
 
-                    # Trata o valor da coluna "Tipo" (ex: "Voluntário" -> "voluntario")
+                    # Tratamento inteligente da coluna 'Tipo'
                     tipo_bruto = str(row.get('Tipo') or row.get('tipo') or row.get('tipo_cancelamento') or 'padrao').strip().lower()
-
                     if "volunt" in tipo_bruto and "involunt" not in tipo_bruto:
                         tipo_canc = "voluntario"
                     elif "involunt" in tipo_bruto:
@@ -243,9 +250,15 @@ def renderizar_aba_disparador_emails(supabase_client):
                     else:
                         tipo_canc = "padrao"
 
+                    if "@" not in email_cliente or "." not in email_cliente:
+                        lista_status.append("ERRO: E-mail inválido")
+                        lista_horarios.append(datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
+                        erros += 1
+                        continue
+
                     status_txt.text(f"Enviando {i+1}/{total_reg} para {email_cliente} via [{meu_email}]...")
 
-                    # Seleção de texto do modelo
+                    # Seleção do texto do modelo
                     if "[1]" in modelo_opcao:
                         texto_din, regras, texto_w = obter_textos_modelo_1(tipo_canc, protocolo_cliente)
                     else:
@@ -266,7 +279,7 @@ def renderizar_aba_disparador_emails(supabase_client):
                     ]
                     assunto = random.choice(titulos)
 
-                    # Link do WhatsApp
+                    # Montagem do link do WhatsApp
                     texto_w_completo = f"{texto_w} Meu endereço cadastrado é: {endereco_completo}"
                     link_w = f"https://api.whatsapp.com/send?phone={num_whatsapp}&text={urllib.parse.quote(texto_w_completo)}"
 
@@ -298,13 +311,13 @@ def renderizar_aba_disparador_emails(supabase_client):
                         lista_status.append(f"Erro: {err}")
                         lista_horarios.append(datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
 
-                    # Atualiza progresso
+                    # Atualização da barra de progresso e delay
                     barra.progress((i + 1) / total_reg)
                     time.sleep(random.randint(delay_min, delay_max))
 
                 st.success(f"🎉 Disparos concluídos! Sucessos: {sucessos} | Falhas: {erros}")
 
-                # Botão para baixar relatório final
+                # Download do relatório final em Excel (.xlsx)
                 df['status_envio'] = lista_status
                 df['data_hora'] = lista_horarios
 
@@ -317,5 +330,6 @@ def renderizar_aba_disparador_emails(supabase_client):
                     label="📊 Baixar Relatório do Disparo (.xlsx)",
                     data=buffer_rel,
                     file_name=f"relatorio_disparos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
                 )
