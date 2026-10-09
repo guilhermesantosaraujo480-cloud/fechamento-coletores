@@ -3,6 +3,11 @@ import pandas as pd
 from datetime import datetime, timedelta, timezone
 import time
 import uuid  # Gerador de tokens ultra-seguros
+import re
+import hmac
+import hashlib
+import secrets as py_secrets
+import bcrypt  # Hash seguro de senhas (adicionar "bcrypt" no requirements.txt)
 from supabase import create_client, Client
 from io import BytesIO
 from PIL import Image  # Para Compactação de fotos
@@ -36,8 +41,25 @@ def init_supabase() -> Client:
 supabase = init_supabase()
 
 # --- FUNÇÃO AUXILIAR ULTRA-SEGURA PARA VALIDAR E EXTRAIR URL DO SUPABASE ---
+BUCKET_COMPROVANTES = "comprovantes"
+MARCADOR_PUBLICO = f"/object/public/{BUCKET_COMPROVANTES}/"
+
+
+@st.cache_data(ttl=3000, show_spinner=False)
+def _url_assinada(caminho):
+    """Gera link temporário (1h) para o arquivo do bucket privado."""
+    try:
+        res = supabase.storage.from_(BUCKET_COMPROVANTES).create_signed_url(caminho, 3600)
+        if isinstance(res, dict):
+            return res.get("signedURL") or res.get("signedUrl") or res.get("signed_url")
+    except Exception:
+        pass
+    return None
+
+
 def extrair_url_valida(foto_obj):
-    """Garante que obteremos uma URL válida de internet e evita que o st.image quebre"""
+    """Devolve uma URL que o st.image consiga abrir.
+    Aceita: caminho no bucket (novo padrão), URL pública antiga do Supabase ou outra URL http(s)."""
     if not foto_obj:
         return None
     if isinstance(foto_obj, dict):
@@ -47,8 +69,88 @@ def extrair_url_valida(foto_obj):
     if not url or url.lower() in ["none", "null", "undefined", ""]:
         return None
     if url.startswith("http://") or url.startswith("https://"):
+        if MARCADOR_PUBLICO in url:  # foto antiga: converte para link assinado
+            caminho = urllib.parse.unquote(url.split(MARCADOR_PUBLICO, 1)[1].split("?")[0])
+            return _url_assinada(caminho)
         return url
-    return None
+    return _url_assinada(url)  # novo padrão: só o caminho do arquivo é salvo
+
+
+def salvar_foto_comprovante(arquivo, prefixo):
+    """Compacta a imagem, envia ao bucket e devolve o CAMINHO salvo (não uma URL pública)."""
+    img = Image.open(arquivo)
+    if img.mode not in ("RGB", "L"):
+        img = img.convert("RGB")
+    img.thumbnail((1024, 1024))
+    buffer_memoria = BytesIO()
+    img.save(buffer_memoria, format="JPEG", quality=75, optimize=True)
+    caminho = f"{prefixo}_{obter_agora_brasilia().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}.jpg"
+    supabase.storage.from_(BUCKET_COMPROVANTES).upload(
+        path=caminho, file=buffer_memoria.getvalue(),
+        file_options={"content-type": "image/jpeg"}
+    )
+    return caminho
+
+
+# ----------------- PAGINAÇÃO (o Supabase devolve no máximo 1000 linhas por consulta) -----------------
+def buscar_todos(tabela, filtros=None, ordem="id", tamanho=1000, maximo=200000):
+    resultado, inicio = [], 0
+    while inicio < maximo:
+        q = supabase.table(tabela).select("*")
+        for col, val in (filtros or {}).items():
+            q = q.eq(col, val)
+        dados = q.order(ordem).range(inicio, inicio + tamanho - 1).execute().data or []
+        resultado.extend(dados)
+        if len(dados) < tamanho:
+            break
+        inicio += tamanho
+    return resultado
+
+
+# ----------------- SENHAS E SESSÃO -----------------
+def gerar_hash_senha(senha):
+    return bcrypt.hashpw(str(senha).encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def conferir_senha(senha_digitada, senha_salva):
+    """Retorna (ok, precisa_migrar). Aceita senhas antigas em texto puro e pede a migração para hash."""
+    senha_salva = str(senha_salva or "")
+    if senha_salva.startswith("$2"):
+        try:
+            return bcrypt.checkpw(str(senha_digitada).encode("utf-8"), senha_salva.encode("utf-8")), False
+        except Exception:
+            return False, False
+    ok = hmac.compare_digest(str(senha_digitada).encode("utf-8"), senha_salva.encode("utf-8"))
+    return ok, ok
+
+
+def hash_token(token):
+    return hashlib.sha256(str(token).encode("utf-8")).hexdigest()
+
+
+@st.cache_resource
+def _registro_tentativas():
+    return {}  # compartilhado entre sessões: {usuario: [timestamps de falhas]}
+
+
+MAX_TENTATIVAS = 5
+JANELA_BLOQUEIO_SEG = 300
+
+
+def login_bloqueado(usuario):
+    agora = time.time()
+    falhas = [t for t in _registro_tentativas().get(usuario, []) if agora - t < JANELA_BLOQUEIO_SEG]
+    _registro_tentativas()[usuario] = falhas
+    return len(falhas) >= MAX_TENTATIVAS
+
+
+def registrar_falha_login(usuario):
+    _registro_tentativas().setdefault(usuario, []).append(time.time())
+
+
+def limpar_termo_busca(termo):
+    """Remove caracteres que alterariam o filtro .or_() do PostgREST."""
+    return re.sub(r"[%*,()\\\"']", " ", termo).strip()
 
 # ----------------- OTIMIZAÇÃO: CACHE PARA LISTAGEM DE USUÁRIOS -----------------
 @st.cache_data(ttl=600)
@@ -166,23 +268,20 @@ def limpar_filtros_callback():
     st.session_state["input_coletor_sel"] = "Todos"
 
 # ----------------- RECUPERAÇÃO DE SESSÃO AUTOMÁTICA (COOKIES / URL) -----------------
-token_recuperado = None
+# O token agora vive SOMENTE no cookie (nunca na URL) e o banco guarda apenas o hash dele.
+if "session" in st.query_params:
+    del st.query_params["session"]  # limpa links antigos que carregavam o token
 
-cookie_token = cookies.get("vivo_coletas_session")
-if cookie_token:
-    token_recuperado = cookie_token
-elif "session" in st.query_params:
-    token_recuperado = st.query_params["session"]
+token_recuperado = cookies.get("vivo_coletas_session")
 
 if not st.session_state["logado"] and token_recuperado:
     try:
-        resposta = supabase.table("usuarios").select("*").eq("session_token", token_recuperado).execute()
+        resposta = supabase.table("usuarios").select("*").eq("session_token", hash_token(token_recuperado)).execute()
         if resposta.data:
             st.session_state["logado"] = True
             st.session_state["usuario_atual"] = resposta.data[0]["usuario"]
             st.session_state["nome_completo_atual"] = resposta.data[0]["nome_completo"]
             st.session_state["cargo_atual"] = resposta.data[0]["cargo"]
-            st.query_params["session"] = token_recuperado
     except Exception:
         pass 
 
@@ -198,31 +297,37 @@ if not st.session_state["logado"]:
     lembrar_mim = st.checkbox("Manter-me conectado neste aparelho", value=True)
     
     if st.button("Entrar", type="primary", use_container_width=True):
-        try:
-            resposta = supabase.table("usuarios").select("*").eq("usuario", user_input).eq("senha", str(pass_input)).execute()
-            user_valido = resposta.data
-            
-            if user_valido:
-                novo_token = str(uuid.uuid4())
-                id_usuario = user_valido[0]["id"]
-                supabase.table("usuarios").update({"session_token": novo_token}).eq("id", id_usuario).execute()
-                
-                if lembrar_mim:
-                    cookies.set("vivo_coletas_session", novo_token, max_age=2592000)
-                
-                st.session_state["logado"] = True
-                st.session_state["usuario_atual"] = user_input
-                st.session_state["nome_completo_atual"] = user_valido[0]["nome_completo"]
-                st.session_state["cargo_atual"] = user_valido[0]["cargo"]
-                st.query_params["session"] = novo_token
-                
-                st.success(f"Bem-vindo, {st.session_state['nome_completo_atual']}!")
-                time.sleep(0.1)
-                st.rerun()
-            else:
-                st.error("Usuário ou senha incorretos.")
-        except Exception as e:
-            st.error(f"Erro ao conectar com o banco de dados: {e}")
+        if login_bloqueado(user_input):
+            st.error("Muitas tentativas incorretas. Aguarde 5 minutos e tente novamente.")
+        else:
+            try:
+                resposta = supabase.table("usuarios").select("*").eq("usuario", user_input).execute()
+                usuario_db = resposta.data[0] if resposta.data else None
+                senha_ok, migrar = conferir_senha(pass_input, usuario_db["senha"]) if usuario_db else (False, False)
+
+                if usuario_db and senha_ok:
+                    novo_token = py_secrets.token_urlsafe(32)
+                    atualizacao = {"session_token": hash_token(novo_token)}
+                    if migrar:  # senha antiga em texto puro -> troca por hash na hora
+                        atualizacao["senha"] = gerar_hash_senha(pass_input)
+                    supabase.table("usuarios").update(atualizacao).eq("id", usuario_db["id"]).execute()
+
+                    if lembrar_mim:
+                        cookies.set("vivo_coletas_session", novo_token, max_age=1209600)  # 14 dias
+
+                    st.session_state["logado"] = True
+                    st.session_state["usuario_atual"] = user_input
+                    st.session_state["nome_completo_atual"] = usuario_db["nome_completo"]
+                    st.session_state["cargo_atual"] = usuario_db["cargo"]
+
+                    st.success(f"Bem-vindo, {st.session_state['nome_completo_atual']}!")
+                    time.sleep(0.3)  # dá tempo do cookie ser gravado antes do rerun
+                    st.rerun()
+                else:
+                    registrar_falha_login(user_input)
+                    st.error("Usuário ou senha incorretos.")
+            except Exception as e:
+                st.error(f"Erro ao conectar com o banco de dados: {e}")
 
 # ----------------- ÁREA DO SISTEMA (LOGADO) -----------------
 else:
@@ -247,17 +352,18 @@ else:
     # PERFIL ADMINISTRADOR
     # =========================================================================
     if st.session_state["cargo_atual"] == "ADM":
-        st.subheader("🛡️ Painel do Administrator")
+        st.subheader("🛡️ Painel do Administrador")
         
         try:
-            res_coletas = supabase.table("coletas").select("*").execute()
-            res_vales = supabase.table("vales_coleta").select("*").execute()
-            res_premiacoes = supabase.table("premiacoes").select("*").execute()
+            # Paginado: sem isso, só as primeiras 1000 linhas entrariam nos totais financeiros
+            dados_coletas = buscar_todos("coletas")
+            dados_vales = buscar_todos("vales_coleta")
+            dados_premiacoes = buscar_todos("premiacoes")
             res_users_data = listar_usuarios_cache()
             
-            df_bruto_coletas = pd.DataFrame(res_coletas.data) if res_coletas.data else pd.DataFrame(columns=["id", "data", "coletor", "quantidade", "foto_url", "status", "valor_total", "pago"])
-            df_bruto_vales = pd.DataFrame(res_vales.data) if res_vales.data else pd.DataFrame(columns=["id", "data", "coletor", "valor_vale", "descricao", "foto_url"])
-            df_bruto_premiacoes = pd.DataFrame(res_premiacoes.data) if res_premiacoes.data else pd.DataFrame(columns=["id", "data", "coletor", "valor_premiacao", "descricao"])
+            df_bruto_coletas = pd.DataFrame(dados_coletas) if dados_coletas else pd.DataFrame(columns=["id", "data", "coletor", "quantidade", "foto_url", "status", "valor_total", "pago"])
+            df_bruto_vales = pd.DataFrame(dados_vales) if dados_vales else pd.DataFrame(columns=["id", "data", "coletor", "valor_vale", "descricao", "foto_url"])
+            df_bruto_premiacoes = pd.DataFrame(dados_premiacoes) if dados_premiacoes else pd.DataFrame(columns=["id", "data", "coletor", "valor_premiacao", "descricao"])
             
             if "pago" not in df_bruto_coletas.columns:
                 df_bruto_coletas["pago"] = False
@@ -330,9 +436,9 @@ else:
                     if confirma_pagamento:
                         if st.button(f"💰 Marcar TODAS as Coletas de {coletor_sel} como Pagas (Controle)", type="primary", use_container_width=True):
                             with st.spinner(f"Marcando como pago..."):
-                                ids_para_pagar = nao_pagas_lista["id"].tolist()
-                                for cid in ids_para_pagar:
-                                    supabase.table("coletas").update({"pago": True}).eq("id", cid).execute()
+                                ids_para_pagar = [int(x) for x in nao_pagas_lista["id"].tolist()]
+                                for i in range(0, len(ids_para_pagar), 200):  # em lotes, uma chamada por 200 ids
+                                    supabase.table("coletas").update({"pago": True}).in_("id", ids_para_pagar[i:i + 200]).execute()
                             st.success(f"✅ Sucesso! {len(ids_para_pagar)} coletas foram marcadas como pagas para seu controle.")
                             time.sleep(0.4)
                             st.rerun()
@@ -474,22 +580,8 @@ else:
                     if foto_vale:
                         try:
                             with st.spinner("Processando e compactando imagem do vale..."):
-                                img = Image.open(foto_vale)
-                                img.thumbnail((1024, 1024))
-                                
-                                buffer_memoria = BytesIO()
-                                img.save(buffer_memoria, format="JPEG", quality=75, optimize=True)
-                                conteudo_foto = buffer_memoria.getvalue()
-                                
-                                nome_foto_nuvem = f"vale_{obter_agora_brasilia().strftime('%Y%m%d%H%M%S')}_{st.session_state['usuario_atual']}.jpg"
-                                
-                                supabase.storage.from_("comprovantes").upload(
-                                    path=nome_foto_nuvem, file=conteudo_foto,
-                                    file_options={"content-type": "image/jpeg"}
-                                )
-                                
-                                foto_url_final = supabase.storage.from_("comprovantes").get_public_url(nome_foto_nuvem)
-                                
+                                foto_url_final = salvar_foto_comprovante(foto_vale, f"vale_{st.session_state['usuario_atual']}")
+
                                 novo_vale = {
                                     "data": str(data_vale), "coletor": str(coletor_vale).strip(),
                                     "valor_vale": float(valor_vale_input), "descricao": str(motivo_vale).strip(),
@@ -610,7 +702,7 @@ else:
                         st.error("⚠️ Usuário já existe!")
                     else:
                         novo_user_dict = {
-                            "usuario": novo_usuario, "senha": str(nova_senha),
+                            "usuario": novo_usuario, "senha": gerar_hash_senha(nova_senha),
                             "nome_completo": novo_nome, "cargo": novo_perfil
                         }
                         with st.spinner("Cadastrando..."):
@@ -643,22 +735,8 @@ else:
                 if quantidade and foto_comprovante:
                     try:
                         with st.spinner("Processando imagem..."):
-                            img = Image.open(foto_comprovante)
-                            img.thumbnail((1024, 1024))
-                            
-                            buffer_memoria = BytesIO()
-                            img.save(buffer_memoria, format="JPEG", quality=75, optimize=True)
-                            conteudo_foto = buffer_memoria.getvalue()
-                            
-                            nome_foto_nuvem = f"{obter_agora_brasilia().strftime('%Y%m%d%H%M%S')}_{st.session_state['usuario_atual']}.jpg"
-                            
-                            supabase.storage.from_("comprovantes").upload(
-                                path=nome_foto_nuvem, file=conteudo_foto,
-                                file_options={"content-type": "image/jpeg"}
-                            )
-                            
-                            foto_url_final = supabase.storage.from_("comprovantes").get_public_url(nome_foto_nuvem)
-                            
+                            foto_url_final = salvar_foto_comprovante(foto_comprovante, f"coleta_{st.session_state['usuario_atual']}")
+
                             novo_registro = {
                                 "data": obter_agora_brasilia().strftime("%Y-%m-%d"), 
                                 "coletor": st.session_state['nome_completo_atual'], 
@@ -698,8 +776,8 @@ else:
             df_vales = pd.DataFrame()
             
             try:
-                res_coletas_c = supabase.table("coletas").select("*").eq("coletor", st.session_state['nome_completo_atual']).execute()
-                df = pd.DataFrame(res_coletas_c.data) if res_coletas_c.data else pd.DataFrame(columns=["id", "data", "coletor", "quantidade", "foto_url", "status", "valor_total", "pago"])
+                dados_coletas_c = buscar_todos("coletas", {"coletor": st.session_state['nome_completo_atual']})
+                df = pd.DataFrame(dados_coletas_c) if dados_coletas_c else pd.DataFrame(columns=["id", "data", "coletor", "quantidade", "foto_url", "status", "valor_total", "pago"])
                 if "pago" not in df.columns:
                     df["pago"] = False
                 else:
@@ -813,11 +891,14 @@ else:
 
         with menu[3]:
             st.subheader("🔍 Localizar Comprovante do Cliente")
-            termo_busca = st.text_input("Digite a OS ou Nome do Cliente:", placeholder="Ex: 10542...").strip()
-            
-            if termo_busca:
+            termo_digitado = st.text_input("Digite a OS ou Nome do Cliente:", placeholder="Ex: 10542...").strip()
+            termo_busca = limpar_termo_busca(termo_digitado)
+
+            if termo_digitado and len(termo_busca) < 3:
+                st.warning("Digite pelo menos 3 caracteres (sem símbolos) para buscar.")
+            elif termo_busca:
                 try:
-                    resposta = supabase.table("comprovantes_clientes").select("*").or_(f"cliente.ilike.%{termo_busca}%,ordem_servico.ilike.%{termo_busca}%").order("data_emissao", desc=True).execute()
+                    resposta = supabase.table("comprovantes_clientes").select("*").or_(f"cliente.ilike.%{termo_busca}%,ordem_servico.ilike.%{termo_busca}%").order("data_emissao", desc=True).limit(50).execute()
                     dados = resposta.data
                     
                     if not dados:

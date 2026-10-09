@@ -1,6 +1,9 @@
 streamlit
 pandas
-supabase
-Pillow
-streamlit-cookies-controller==0.0.4
 openpyxl
+supabase
+pillow
+streamlit-cookies-controller
+bcrypt
+cryptography
+requests
