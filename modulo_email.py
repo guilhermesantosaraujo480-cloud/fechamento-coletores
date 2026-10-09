@@ -7,6 +7,42 @@ from email.message import EmailMessage
 from datetime import datetime
 import urllib.parse
 from io import BytesIO
+import urllib.parse
+
+# --- BLOCO DE MÉTRICAS DE CLIQUES ---
+st.markdown("### 📊 Métricas de Engajamento (Cliques no WhatsApp)")
+
+try:
+    # Consulta a tabela cliques_email no Supabase
+    res_cliques = supabase.table("cliques_email").select("*").execute()
+    
+    if res_cliques.data:
+        df_cliques = pd.DataFrame(res_cliques.data)
+        
+        total_cliques = len(df_cliques)
+        clientes_unicos = df_cliques["envio_id"].nunique()
+        
+        c1, c2 = st.columns(2)
+        c1.metric("Total de Cliques", total_cliques)
+        c2.metric("Clientes Únicos que Clicaram", clientes_unicos)
+        
+        with st.expander("🔍 Ver Detalhes dos Cliques"):
+            st.dataframe(
+                df_cliques[["envio_id", "data_clique", "user_agent"]].rename(
+                    columns={
+                        "envio_id": "Protocolo / ID Envio",
+                        "data_clique": "Data/Hora do Clique",
+                        "user_agent": "Dispositivo / Navegador"
+                    }
+                ),
+                use_container_width=True
+            )
+    else:
+        st.info("Nenhum clique registrado até o momento.")
+except Exception as e:
+    st.error(f"Erro ao carregar métricas de clique: {e}")
+
+st.markdown("---")
 
 # --- TEMPLATE HTML DO E-MAIL ---
 HTML_TEMPLATE = """
@@ -320,7 +356,14 @@ def renderizar_aba_disparador_emails(supabase_client):
 
                     # Montagem do link do WhatsApp
                     texto_w_completo = f"{texto_w} Meu endereço cadastrado é: {endereco_completo}"
-                    link_w = f"https://api.whatsapp.com/send?phone={num_whatsapp}&text={urllib.parse.quote(texto_w_completo)}"
+                    # 1. Link direto original do WhatsApp
+                    link_wa_direto = f"https://api.whatsapp.com/send?phone={num_whatsapp}&text={urllib.parse.quote(texto_w_completo)}"
+
+                    # 2. Sua Edge Function do Supabase
+                    url_supabase_function = "https://jyymqbvgehhhlaanltlz.supabase.co/functions/v1/super-function"
+
+                    # 3. Link rastreável final que vai no e-mail
+                    link_w = f"{url_supabase_function}?protocolo={protocolo_cliente}&dest={urllib.parse.quote(link_wa_direto)}"
 
                     # Envio SMTP
                     try:
