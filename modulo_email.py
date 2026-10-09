@@ -212,29 +212,36 @@ def renderizar_aba_disparador_emails(supabase_client):
                     meu_email = conta_atual["email"]
                     minha_senha = conta_atual["senha_app"]
 
-                    email_cliente = str(row.get('email', '')).strip()
-                    nome_cliente = str(row.get('nome', 'Cliente')).strip()
-                    protocolo_cliente = str(row.get('protocolo', '')).strip()
+                    # Mapeamento direto das colunas da planilha original (sem precisar alterar nada)
+                    email_cliente = str(row.get('Email') or row.get('email') or '').strip()
+                    nome_cliente = str(row.get('Cliente') or row.get('nome') or 'Cliente').strip()
+                    protocolo_cliente = str(row.get('BA') or row.get('protocolo') or '').strip()
 
-                    rua = str(row.get('endereco', '')).strip()
-                    numero = str(row.get('numero', '')).strip()
-                    bairro = str(row.get('bairro', '')).strip()
-                    cep = str(row.get('cep', '')).strip()
+                    rua = str(row.get('Endereço') or row.get('endereço') or row.get('endereco') or '').strip()
+                    numero = str(row.get('Número') or row.get('número') or row.get('numero') or '').strip()
+                    bairro = str(row.get('Bairro') or row.get('bairro') or '').strip()
+                    cep = str(row.get('Cep') or row.get('cep') or '').strip()
 
                     partes_end = []
-                    if rua: partes_end.append(rua)
-                    if numero: partes_end.append(f"Nº {numero}")
-                    if bairro: partes_end.append(bairro)
-                    if cep: partes_end.append(f"CEP: {cep}")
+                    if rua:
+                        partes_end.append(rua)
+                    if numero:
+                        partes_end.append(f"Nº {numero}")
+                    if bairro:
+                        partes_end.append(bairro)
+                    if cep:
+                        partes_end.append(f"CEP: {cep}")
                     endereco_completo = " - ".join(partes_end) if partes_end else "Endereço incompleto na planilha"
 
-                    tipo_canc = str(row.get('tipo_cancelamento', 'padrao')).strip().lower()
+                    # Trata o valor da coluna "Tipo" (ex: "Voluntário" -> "voluntario")
+                    tipo_bruto = str(row.get('Tipo') or row.get('tipo') or row.get('tipo_cancelamento') or 'padrao').strip().lower()
 
-                    if "@" not in email_cliente or "." not in email_cliente:
-                        lista_status.append("ERRO: E-mail inválido")
-                        lista_horarios.append(datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
-                        erros += 1
-                        continue
+                    if "volunt" in tipo_bruto and "involunt" not in tipo_bruto:
+                        tipo_canc = "voluntario"
+                    elif "involunt" in tipo_bruto:
+                        tipo_canc = "involuntario"
+                    else:
+                        tipo_canc = "padrao"
 
                     status_txt.text(f"Enviando {i+1}/{total_reg} para {email_cliente} via [{meu_email}]...")
 
