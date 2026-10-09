@@ -288,11 +288,12 @@ else:
         with st.container():
             nome_limpo_chave = str(coletor_sel).replace(" ", "_")
             sub_menu_adm = st.tabs(
-                ["📋 Gestão de Coletas", "📉 Registrar/Ver Vales", "🏅 Serviços/Premiações", "📊 Relatório de Uso", "👤 Cadastrar Usuários"], 
+                ["📋 Gestão de Coletas", "📉 Registrar/Ver Vales", "🏅 Serviços/Premiações", "📊 Relatório de Uso", "👤 Cadastrar Usuários", "📧 Disparador de E-mails"], 
                 key=f"tabs_adm_fix_{nome_limpo_chave}"
             )
         
         # ----------------- ABA 1: GESTÃO DE COLETAS -----------------
+        
         with sub_menu_adm[0]:
             if not df_bruto_coletas.empty:
                 df_bruto_coletas['data_dt'] = pd.to_datetime(df_bruto_coletas['data']).dt.date
