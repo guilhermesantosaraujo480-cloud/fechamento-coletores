@@ -6,7 +6,7 @@ import smtplib
 from email.message import EmailMessage
 from datetime import datetime
 import urllib.parse
-from io import BytesIO, StringIO
+from io import BytesIO
 
 # --- TEMPLATE HTML DO E-MAIL ---
 HTML_TEMPLATE = """
@@ -91,6 +91,38 @@ def obter_textos_modelo_2(protocolo):
     return texto, regras, texto_whats
 
 
+# --- FUNÇÃO DE LEITURA DE PLANILHAS ---
+def carregar_dataframe_inteligente(arquivo):
+    nome = arquivo.name.lower()
+    
+    if nome.endswith(".xlsx") or nome.endswith(".xls"):
+        try:
+            return pd.read_excel(arquivo)
+        except Exception:
+            arquivo.seek(0)
+            return pd.read_csv(arquivo, sep='\t', encoding='latin1')
+    
+    encodings = ['utf-8', 'latin1', 'iso-8859-1', 'cp1252']
+    separadores = [None, '\t', ';', ',']
+    
+    for enc in encodings:
+        for sep in separadores:
+            try:
+                arquivo.seek(0)
+                if sep is None:
+                    df = pd.read_csv(arquivo, sep=None, engine='python', encoding=enc)
+                else:
+                    df = pd.read_csv(arquivo, sep=sep, encoding=enc)
+                
+                if len(df.columns) > 1 and len(df) > 0:
+                    return df
+            except Exception:
+                continue
+    
+    arquivo.seek(0)
+    return pd.read_csv(arquivo, on_bad_lines='skip')
+
+
 # --- INTERFACE DO STREAMLIT ---
 def renderizar_aba_disparador_emails(supabase_client):
     st.subheader("📧 Disparador Automático de E-mails")
@@ -167,25 +199,19 @@ def renderizar_aba_disparador_emails(supabase_client):
         st.info(f"✅ **{len(contas_ativas)} conta(s) ativa(s)** disponível(is) para rotação automática de disparos.")
 
         # Upload da Planilha
-        arquivo = st.file_uploader("📂 Faça upload da planilha (.xlsx, .csv ou .txt)", type=["xlsx", "csv", "txt"])
+        arquivo = st.file_uploader("📂 Faça upload da planilha (.xlsx, .xls, .csv ou .txt)", type=["xlsx", "xls", "csv", "txt"])
         
         if arquivo:
             try:
-                if arquivo.name.endswith(".xlsx"):
-                    df = pd.read_excel(arquivo)
-                else:
-                    conteudo = arquivo.getvalue().decode('utf-8', errors='ignore')
-                    primeira_linha = conteudo.split('\n')[0] if conteudo else ''
-                    
-                    if '\t' in primeira_linha:
-                        df = pd.read_csv(StringIO(conteudo), sep='\t')
-                    elif ';' in primeira_linha:
-                        df = pd.read_csv(StringIO(conteudo), sep=';')
-                    else:
-                        df = pd.read_csv(StringIO(conteudo), sep=',')
-                
+                df = carregar_dataframe_inteligente(arquivo)
                 df = df.dropna(how='all')
-                st.success(f"📋 Planilha carregada: **{len(df)} registros encontrados**.")
+                
+                df.columns = [str(col).strip() for col in df.columns]
+                
+                st.success(f"📋 Planilha carregada com sucesso: **{len(df)} registros encontrados**.")
+                
+                with st.expander("👁️ Ver prévia da planilha carregada"):
+                    st.dataframe(df.head(5), use_container_width=True)
             except Exception as e:
                 st.error(f"Erro ao ler arquivo: {e}")
                 return
@@ -217,6 +243,13 @@ def renderizar_aba_disparador_emails(supabase_client):
                 total_reg = len(df)
                 sucessos = 0
                 erros = 0
+                ignorados = 0
+
+                # Lista de e-mails fictícios/placeholders comuns
+                emails_invalidos_lista = [
+                    'email@email.com', 'teste@teste.com', 'naotem@naotem.com', 
+                    'sememail@sememail.com', 'cliente@cliente.com', 'xxx@xxx.com'
+                ]
 
                 for i, row in df.iterrows():
                     # Alterna a conta remetente em carrossel
@@ -224,8 +257,8 @@ def renderizar_aba_disparador_emails(supabase_client):
                     meu_email = conta_atual["email"]
                     minha_senha = conta_atual["senha_app"]
 
-                    # Mapeamento dinâmico das colunas da planilha (suporta acentos e maiúsculas)
-                    email_cliente = str(row.get('Email') or row.get('email') or '').strip()
+                    # Mapeamento das colunas da planilha
+                    email_cliente = str(row.get('Email') or row.get('email') or '').strip().lower()
                     nome_cliente = str(row.get('Cliente') or row.get('nome') or 'Cliente').strip()
                     protocolo_cliente = str(row.get('BA') or row.get('protocolo') or '').strip()
 
@@ -241,7 +274,7 @@ def renderizar_aba_disparador_emails(supabase_client):
                     if cep: partes_end.append(f"CEP: {cep}")
                     endereco_completo = " - ".join(partes_end) if partes_end else "Endereço incompleto na planilha"
 
-                    # Tratamento inteligente da coluna 'Tipo'
+                    # Tratamento da coluna 'Tipo'
                     tipo_bruto = str(row.get('Tipo') or row.get('tipo') or row.get('tipo_cancelamento') or 'padrao').strip().lower()
                     if "volunt" in tipo_bruto and "involunt" not in tipo_bruto:
                         tipo_canc = "voluntario"
@@ -250,10 +283,16 @@ def renderizar_aba_disparador_emails(supabase_client):
                     else:
                         tipo_canc = "padrao"
 
-                    if "@" not in email_cliente or "." not in email_cliente:
-                        lista_status.append("ERRO: E-mail inválido")
+                    # Filtro de e-mails inválidos ou genéricos/fictícios
+                    if ("@" not in email_cliente or 
+                        "." not in email_cliente or 
+                        email_cliente in emails_invalidos_lista or 
+                        email_cliente.startswith("email@")):
+                        
+                        lista_status.append("IGNORADO: E-mail fictício/inválido")
                         lista_horarios.append(datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
-                        erros += 1
+                        ignorados += 1
+                        barra.progress((i + 1) / total_reg)
                         continue
 
                     status_txt.text(f"Enviando {i+1}/{total_reg} para {email_cliente} via [{meu_email}]...")
@@ -311,11 +350,11 @@ def renderizar_aba_disparador_emails(supabase_client):
                         lista_status.append(f"Erro: {err}")
                         lista_horarios.append(datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
 
-                    # Atualização da barra de progresso e delay
+                    # Atualização do progresso e delay
                     barra.progress((i + 1) / total_reg)
                     time.sleep(random.randint(delay_min, delay_max))
 
-                st.success(f"🎉 Disparos concluídos! Sucessos: {sucessos} | Falhas: {erros}")
+                st.success(f"🎉 Disparos concluídos! Sucessos: {sucessos} | Ignorados (fictícios): {ignorados} | Erros: {erros}")
 
                 # Download do relatório final em Excel (.xlsx)
                 df['status_envio'] = lista_status
