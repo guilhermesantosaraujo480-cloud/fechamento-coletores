@@ -7,42 +7,6 @@ from email.message import EmailMessage
 from datetime import datetime
 import urllib.parse
 from io import BytesIO
-import urllib.parse
-
-# --- BLOCO DE MÉTRICAS DE CLIQUES ---
-st.markdown("### 📊 Métricas de Engajamento (Cliques no WhatsApp)")
-
-try:
-    # Consulta a tabela cliques_email no Supabase
-    res_cliques = supabase.table("cliques_email").select("*").execute()
-    
-    if res_cliques.data:
-        df_cliques = pd.DataFrame(res_cliques.data)
-        
-        total_cliques = len(df_cliques)
-        clientes_unicos = df_cliques["envio_id"].nunique()
-        
-        c1, c2 = st.columns(2)
-        c1.metric("Total de Cliques", total_cliques)
-        c2.metric("Clientes Únicos que Clicaram", clientes_unicos)
-        
-        with st.expander("🔍 Ver Detalhes dos Cliques"):
-            st.dataframe(
-                df_cliques[["envio_id", "data_clique", "user_agent"]].rename(
-                    columns={
-                        "envio_id": "Protocolo / ID Envio",
-                        "data_clique": "Data/Hora do Clique",
-                        "user_agent": "Dispositivo / Navegador"
-                    }
-                ),
-                use_container_width=True
-            )
-    else:
-        st.info("Nenhum clique registrado até o momento.")
-except Exception as e:
-    st.error(f"Erro ao carregar métricas de clique: {e}")
-
-st.markdown("---")
 
 # --- TEMPLATE HTML DO E-MAIL ---
 HTML_TEMPLATE = """
@@ -51,24 +15,24 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <style>
-        body {{ margin: 0; padding: 0; background-color: #f4f5f7; font-family: 'Segoe UI', Arial, sans-serif; color: #333333; }}
-        .email-container {{ max-width: 600px; margin: 30px auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }}
-        .header-banner {{ background-color: #ffffff; padding: 30px 30px 15px 30px; text-align: left; border-bottom: 1px solid #f0f0f0; }}
-        .logo-text {{ font-size: 26px; font-weight: bold; color: #660099; letter-spacing: -0.5px; }}
-        .logo-text span {{ color: #333333; font-weight: normal; font-size: 22px; }}
-        .content-body {{ padding: 30px; text-align: left; }}
-        .headline {{ font-size: 22px; font-weight: 700; margin-bottom: 15px; color: #660099; }}
-        .message-text {{ font-size: 15px; line-height: 1.6; margin-bottom: 25px; color: #444444; }}
-        .purple-card {{ background-color: #660099; border-radius: 10px; padding: 25px; margin: 25px 0; color: #ffffff; }}
-        .purple-card h2 {{ margin: 0 0 10px 0; font-size: 18px; color: #ffffff; font-weight: 600; }}
-        .purple-card p {{ margin: 0 0 20px 0; font-size: 14px; color: #f3e6ff; line-height: 1.5; }}
-        .address-box {{ background-color: #f8f0ff; border-left: 4px solid #660099; padding: 15px; margin: 20px 0; border-radius: 0 8px 8px 0; }}
-        .address-box p {{ margin: 0; font-size: 14px; color: #333333; line-height: 1.5; }}
-        .btn-container {{ text-align: center; margin-top: 15px; }}
-        .btn-link {{ display: inline-block; background-color: #ffffff; color: #660099 !important; text-decoration: none; font-size: 14px; font-weight: bold; padding: 14px 32px; border-radius: 25px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); text-transform: uppercase; }}
-        .features-box {{ background-color: #f9f9fb; border: 1px solid #e9e9ee; border-radius: 8px; padding: 18px; margin-top: 25px; }}
-        .features-box p {{ margin: 0; font-size: 13px; line-height: 1.5; color: #666666; }}
-        .footer {{ background-color: #ffffff; padding: 25px 30px; font-size: 11px; color: #888888; text-align: center; border-top: 1px solid #f0f0f0; line-height: 1.5; }}
+        body { margin: 0; padding: 0; background-color: #f4f5f7; font-family: 'Segoe UI', Arial, sans-serif; color: #333333; }
+        .email-container { max-width: 600px; margin: 30px auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        .header-banner { background-color: #ffffff; padding: 30px 30px 15px 30px; text-align: left; border-bottom: 1px solid #f0f0f0; }
+        .logo-text { font-size: 26px; font-weight: bold; color: #660099; letter-spacing: -0.5px; }
+        .logo-text span { color: #333333; font-weight: normal; font-size: 22px; }
+        .content-body { padding: 30px; text-align: left; }
+        .headline { font-size: 22px; font-weight: 700; margin-bottom: 15px; color: #660099; }
+        .message-text { font-size: 15px; line-height: 1.6; margin-bottom: 25px; color: #444444; }
+        .purple-card { background-color: #660099; border-radius: 10px; padding: 25px; margin: 25px 0; color: #ffffff; }
+        .purple-card h2 { margin: 0 0 10px 0; font-size: 18px; color: #ffffff; font-weight: 600; }
+        .purple-card p { margin: 0 0 20px 0; font-size: 14px; color: #f3e6ff; line-height: 1.5; }
+        .address-box { background-color: #f8f0ff; border-left: 4px solid #660099; padding: 15px; margin: 20px 0; border-radius: 0 8px 8px 0; }
+        .address-box p { margin: 0; font-size: 14px; color: #333333; line-height: 1.5; }
+        .btn-container { text-align: center; margin-top: 15px; }
+        .btn-link { display: inline-block; background-color: #ffffff; color: #660099 !important; text-decoration: none; font-size: 14px; font-weight: bold; padding: 14px 32px; border-radius: 25px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); text-transform: uppercase; }
+        .features-box { background-color: #f9f9fb; border: 1px solid #e9e9ee; border-radius: 8px; padding: 18px; margin-top: 25px; }
+        .features-box p { margin: 0; font-size: 13px; line-height: 1.5; color: #666666; }
+        .footer { background-color: #ffffff; padding: 25px 30px; font-size: 11px; color: #888888; text-align: center; border-top: 1px solid #f0f0f0; line-height: 1.5; }
     </style>
 </head>
 <body>
@@ -126,11 +90,8 @@ def obter_textos_modelo_2(protocolo):
     texto_whats = f"Olá! Recebi o aviso de rota para o protocolo {protocolo}. Quero dar meu 'ok' sobre o endereço cadastrado."
     return texto, regras, texto_whats
 
-
-# --- FUNÇÃO DE LEITURA DE PLANILHAS ---
 def carregar_dataframe_inteligente(arquivo):
     nome = arquivo.name.lower()
-    
     if nome.endswith(".xlsx") or nome.endswith(".xls"):
         try:
             return pd.read_excel(arquivo)
@@ -149,12 +110,10 @@ def carregar_dataframe_inteligente(arquivo):
                     df = pd.read_csv(arquivo, sep=None, engine='python', encoding=enc)
                 else:
                     df = pd.read_csv(arquivo, sep=sep, encoding=enc)
-                
                 if len(df.columns) > 1 and len(df) > 0:
                     return df
             except Exception:
                 continue
-    
     arquivo.seek(0)
     return pd.read_csv(arquivo, on_bad_lines='skip')
 
@@ -162,6 +121,39 @@ def carregar_dataframe_inteligente(arquivo):
 # --- INTERFACE DO STREAMLIT ---
 def renderizar_aba_disparador_emails(supabase_client):
     st.subheader("📧 Disparador Automático de E-mails")
+
+    # -------------------------------------------------------------
+    # BLOCO DE MÉTRICAS DE CLIQUES (CORRIGIDO PARA EXECUTAR DENTRO DA ABA)
+    # -------------------------------------------------------------
+    st.markdown("### 📊 Métricas de Engajamento (Cliques no WhatsApp)")
+    col_met1, col_met2 = st.columns([3, 1])
+    with col_met2:
+        if st.button("🔄 Atualizar Cliques"):
+            st.rerun()
+
+    try:
+        res_cliques = supabase_client.table("cliques_email").select("*").execute()
+        if res_cliques.data:
+            df_cliques = pd.DataFrame(res_cliques.data)
+            total_cliques = len(df_cliques)
+            clientes_unicos = df_cliques["envio_id"].nunique() if "envio_id" in df_cliques.columns else total_cliques
+            
+            c1, c2 = st.columns(2)
+            c1.metric("Total de Cliques Registrados", total_cliques)
+            c2.metric("Clientes Únicos que Clicaram", clientes_unicos)
+            
+            with st.expander("🔍 Ver Detalhes dos Cliques"):
+                st.dataframe(
+                    df_cliques,
+                    use_container_width=True,
+                    hide_index=True
+                )
+        else:
+            st.info("Nenhum clique registrado até o momento.")
+    except Exception as e:
+        st.error(f"Erro ao carregar métricas de clique: {e}")
+
+    st.markdown("---")
 
     sub_tab1, sub_tab2 = st.tabs(["🚀 Realizar Disparos", "🔑 Gerenciar Contas Remetentes"])
 
@@ -207,7 +199,6 @@ def renderizar_aba_disparador_emails(supabase_client):
                     c1, c2, c3, c4 = st.columns([3, 2, 2, 2])
                     c1.write(f"📧 **{r['email']}** ({r['nome_remetente']})")
                     c2.write(f"Limite: {r['limite_diario']}/dia")
-                    
                     status_str = "🟢 Ativa" if r['ativa'] else "🔴 Inativa"
                     c3.write(f"Status: {status_str}")
                     
@@ -224,7 +215,6 @@ def renderizar_aba_disparador_emails(supabase_client):
     # TAB 2: DISPARAR E-MAILS
     # -------------------------------------------------------------
     with sub_tab1:
-        # Carregar contas ativas
         res_ativas = supabase_client.table("contas_email").select("*").eq("ativa", True).execute()
         contas_ativas = res_ativas.data if res_ativas.data else []
 
@@ -234,18 +224,14 @@ def renderizar_aba_disparador_emails(supabase_client):
 
         st.info(f"✅ **{len(contas_ativas)} conta(s) ativa(s)** disponível(is) para rotação automática de disparos.")
 
-        # Upload da Planilha
         arquivo = st.file_uploader("📂 Faça upload da planilha (.xlsx, .xls, .csv ou .txt)", type=["xlsx", "xls", "csv", "txt"])
         
         if arquivo:
             try:
                 df = carregar_dataframe_inteligente(arquivo)
                 df = df.dropna(how='all')
-                
                 df.columns = [str(col).strip() for col in df.columns]
-                
                 st.success(f"📋 Planilha carregada com sucesso: **{len(df)} registros encontrados**.")
-                
                 with st.expander("👁️ Ver prévia da planilha carregada"):
                     st.dataframe(df.head(5), use_container_width=True)
             except Exception as e:
@@ -269,7 +255,19 @@ def renderizar_aba_disparador_emails(supabase_client):
 
             st.markdown("---")
 
-            if st.button("🚀 Iniciar Disparos em Massa", type="primary", use_container_width=True):
+            # BOTÕES DE CONTROLE DOS DISPAROS (INICIAR E PARAR)
+            if "parar_disparo" not in st.session_state:
+                st.session_state["parar_disparo"] = False
+
+            col_btn_start, col_btn_stop = st.columns([3, 1])
+            with col_btn_stop:
+                if st.button("🛑 PARAR DISPARO", type="secondary", use_container_width=True):
+                    st.session_state["parar_disparo"] = True
+
+            iniciar = col_btn_start.button("🚀 Iniciar Disparos em Massa", type="primary", use_container_width=True)
+
+            if iniciar:
+                st.session_state["parar_disparo"] = False
                 barra = st.progress(0)
                 status_txt = st.empty()
 
@@ -281,19 +279,22 @@ def renderizar_aba_disparador_emails(supabase_client):
                 erros = 0
                 ignorados = 0
 
-                # Lista de e-mails fictícios/placeholders comuns
                 emails_invalidos_lista = [
                     'email@email.com', 'teste@teste.com', 'naotem@naotem.com', 
                     'sememail@sememail.com', 'cliente@cliente.com', 'xxx@xxx.com'
                 ]
 
                 for i, row in df.iterrows():
-                    # Alterna a conta remetente em carrossel
+                    # VERIFICA SE O BOTÃO DE PARAR FOI CLICADO
+                    if st.session_state["parar_disparo"]:
+                        st.warning(f"⚠️ Disparo cancelado pelo usuário! Interrompido no registro {i}/{total_reg}.")
+                        st.session_state["parar_disparo"] = False
+                        break
+
                     conta_atual = contas_ativas[i % len(contas_ativas)]
                     meu_email = conta_atual["email"]
                     minha_senha = conta_atual["senha_app"]
 
-                    # Mapeamento das colunas da planilha
                     email_cliente = str(row.get('Email') or row.get('email') or '').strip().lower()
                     nome_cliente = str(row.get('Cliente') or row.get('nome') or 'Cliente').strip()
                     protocolo_cliente = str(row.get('BA') or row.get('protocolo') or '').strip()
@@ -310,7 +311,6 @@ def renderizar_aba_disparador_emails(supabase_client):
                     if cep: partes_end.append(f"CEP: {cep}")
                     endereco_completo = " - ".join(partes_end) if partes_end else "Endereço incompleto na planilha"
 
-                    # Tratamento da coluna 'Tipo'
                     tipo_bruto = str(row.get('Tipo') or row.get('tipo') or row.get('tipo_cancelamento') or 'padrao').strip().lower()
                     if "volunt" in tipo_bruto and "involunt" not in tipo_bruto:
                         tipo_canc = "voluntario"
@@ -319,7 +319,6 @@ def renderizar_aba_disparador_emails(supabase_client):
                     else:
                         tipo_canc = "padrao"
 
-                    # Filtro de e-mails inválidos ou genéricos/fictícios
                     if ("@" not in email_cliente or 
                         "." not in email_cliente or 
                         email_cliente in emails_invalidos_lista or 
@@ -333,13 +332,11 @@ def renderizar_aba_disparador_emails(supabase_client):
 
                     status_txt.text(f"Enviando {i+1}/{total_reg} para {email_cliente} via [{meu_email}]...")
 
-                    # Seleção do texto do modelo
                     if "[1]" in modelo_opcao:
                         texto_din, regras, texto_w = obter_textos_modelo_1(tipo_canc, protocolo_cliente)
                     else:
                         texto_din, regras, texto_w = obter_textos_modelo_2(protocolo_cliente)
 
-                    # Títulos aleatórios (anti-spam)
                     titulos = [
                         f"Atualização de agendamento: Protocolo {protocolo_cliente}",
                         f"Ordem de coleta técnica gerada - Ref: {protocolo_cliente}",
@@ -354,18 +351,13 @@ def renderizar_aba_disparador_emails(supabase_client):
                     ]
                     assunto = random.choice(titulos)
 
-                    # Montagem do link do WhatsApp
+                    # LINK DO WHATSAPP RASTREÁVEL
                     texto_w_completo = f"{texto_w} Meu endereço cadastrado é: {endereco_completo}"
-                    # 1. Link direto original do WhatsApp
                     link_wa_direto = f"https://api.whatsapp.com/send?phone={num_whatsapp}&text={urllib.parse.quote(texto_w_completo)}"
-
-                    # 2. Sua Edge Function do Supabase
+                    
                     url_supabase_function = "https://jyymqbvgehhhlaanltlz.supabase.co/functions/v1/super-function"
-
-                    # 3. Link rastreável final que vai no e-mail
                     link_w = f"{url_supabase_function}?protocolo={protocolo_cliente}&dest={urllib.parse.quote(link_wa_direto)}"
 
-                    # Envio SMTP
                     try:
                         msg = EmailMessage()
                         msg['Subject'] = assunto
@@ -393,13 +385,11 @@ def renderizar_aba_disparador_emails(supabase_client):
                         lista_status.append(f"Erro: {err}")
                         lista_horarios.append(datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
 
-                    # Atualização do progresso e delay
                     barra.progress((i + 1) / total_reg)
                     time.sleep(random.randint(delay_min, delay_max))
 
-                st.success(f"🎉 Disparos concluídos! Sucessos: {sucessos} | Ignorados (fictícios): {ignorados} | Erros: {erros}")
+                st.success(f"🎉 Processo concluído! Sucessos: {sucessos} | Ignorados: {ignorados} | Erros: {erros}")
 
-                # Download do relatório final em Excel (.xlsx)
                 df['status_envio'] = lista_status
                 df['data_hora'] = lista_horarios
 
