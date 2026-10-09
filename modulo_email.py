@@ -8,31 +8,31 @@ from datetime import datetime
 import urllib.parse
 from io import BytesIO
 
-# --- TEMPLATE HTML DO E-MAIL ---
+# --- TEMPLATE HTML DO E-MAIL (CORRIGIDO) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <style>
-        body { margin: 0; padding: 0; background-color: #f4f5f7; font-family: 'Segoe UI', Arial, sans-serif; color: #333333; }
-        .email-container { max-width: 600px; margin: 30px auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
-        .header-banner { background-color: #ffffff; padding: 30px 30px 15px 30px; text-align: left; border-bottom: 1px solid #f0f0f0; }
-        .logo-text { font-size: 26px; font-weight: bold; color: #660099; letter-spacing: -0.5px; }
-        .logo-text span { color: #333333; font-weight: normal; font-size: 22px; }
-        .content-body { padding: 30px; text-align: left; }
-        .headline { font-size: 22px; font-weight: 700; margin-bottom: 15px; color: #660099; }
-        .message-text { font-size: 15px; line-height: 1.6; margin-bottom: 25px; color: #444444; }
-        .purple-card { background-color: #660099; border-radius: 10px; padding: 25px; margin: 25px 0; color: #ffffff; }
-        .purple-card h2 { margin: 0 0 10px 0; font-size: 18px; color: #ffffff; font-weight: 600; }
-        .purple-card p { margin: 0 0 20px 0; font-size: 14px; color: #f3e6ff; line-height: 1.5; }
-        .address-box { background-color: #f8f0ff; border-left: 4px solid #660099; padding: 15px; margin: 20px 0; border-radius: 0 8px 8px 0; }
-        .address-box p { margin: 0; font-size: 14px; color: #333333; line-height: 1.5; }
-        .btn-container { text-align: center; margin-top: 15px; }
-        .btn-link { display: inline-block; background-color: #ffffff; color: #660099 !important; text-decoration: none; font-size: 14px; font-weight: bold; padding: 14px 32px; border-radius: 25px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); text-transform: uppercase; }
-        .features-box { background-color: #f9f9fb; border: 1px solid #e9e9ee; border-radius: 8px; padding: 18px; margin-top: 25px; }
-        .features-box p { margin: 0; font-size: 13px; line-height: 1.5; color: #666666; }
-        .footer { background-color: #ffffff; padding: 25px 30px; font-size: 11px; color: #888888; text-align: center; border-top: 1px solid #f0f0f0; line-height: 1.5; }
+        body {{ margin: 0; padding: 0; background-color: #f4f5f7; font-family: 'Segoe UI', Arial, sans-serif; color: #333333; }}
+        .email-container {{ max-width: 600px; margin: 30px auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }}
+        .header-banner {{ background-color: #ffffff; padding: 30px 30px 15px 30px; text-align: left; border-bottom: 1px solid #f0f0f0; }}
+        .logo-text {{ font-size: 26px; font-weight: bold; color: #660099; letter-spacing: -0.5px; }}
+        .logo-text span {{ color: #333333; font-weight: normal; font-size: 22px; }}
+        .content-body {{ padding: 30px; text-align: left; }}
+        .headline {{ font-size: 22px; font-weight: 700; margin-bottom: 15px; color: #660099; }}
+        .message-text {{ font-size: 15px; line-height: 1.6; margin-bottom: 25px; color: #444444; }}
+        .purple-card {{ background-color: #660099; border-radius: 10px; padding: 25px; margin: 25px 0; color: #ffffff; }}
+        .purple-card h2 {{ margin: 0 0 10px 0; font-size: 18px; color: #ffffff; font-weight: 600; }}
+        .purple-card p {{ margin: 0 0 20px 0; font-size: 14px; color: #f3e6ff; line-height: 1.5; }}
+        .address-box {{ background-color: #f8f0ff; border-left: 4px solid #660099; padding: 15px; margin: 20px 0; border-radius: 0 8px 8px 0; }}
+        .address-box p {{ margin: 0; font-size: 14px; color: #333333; line-height: 1.5; }}
+        .btn-container {{ text-align: center; margin-top: 15px; }}
+        .btn-link {{ display: inline-block; background-color: #ffffff; color: #660099 !important; text-decoration: none; font-size: 14px; font-weight: bold; padding: 14px 32px; border-radius: 25px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); text-transform: uppercase; }}
+        .features-box {{ background-color: #f9f9fb; border: 1px solid #e9e9ee; border-radius: 8px; padding: 18px; margin-top: 25px; }}
+        .features-box p {{ margin: 0; font-size: 13px; line-height: 1.5; color: #666666; }}
+        .footer {{ background-color: #ffffff; padding: 25px 30px; font-size: 11px; color: #888888; text-align: center; border-top: 1px solid #f0f0f0; line-height: 1.5; }}
     </style>
 </head>
 <body>
