@@ -11,7 +11,7 @@ ROTULO_STATUS = {"Aprovado": "🟢 Aprovada", "Pendente": "🟡 Aguardando aprov
 
 def _periodo():
     hoje = hoje_br()
-    nome = st.selectbox("Período", PERIODOS, index=PERIODOS.index("Este mês"), key="c_periodo")
+    nome = st.selectbox("Período", PERIODOS, index=PERIODOS.index("Quinzena atual"), key="c_periodo")
     if nome == "Personalizado":
         c1, c2 = st.columns(2)
         ini = c1.date_input("De", value=hoje.replace(day=1), key="c_ini", format="DD/MM/YYYY")
@@ -83,6 +83,13 @@ def render(sb):
     metricas([("📱 Aparelhos aprovados", f"{f.aparelhos}"), ("💰 Bruto", brl(f.reais("bruto"))),
               ("🏅 Premiações (+)", brl(f.reais("premios"))), ("📉 Vales (−)", brl(f.reais("vales"))),
               ("🧮 Líquido", brl(f.reais("liquido")))])
+    try:
+        anterior = dados.saldos_anteriores(sb, ini, nome).get(nome, 0)
+    except Exception:
+        anterior = 0
+    if anterior:
+        st.warning(f"↩️ Você tem **{brl(abs(anterior) / 100)}** de vales que passaram da produção na quinzena anterior. "
+                   f"Esse valor é descontado automaticamente: a pagar agora = **{brl((f.liquido + anterior) / 100)}**.")
     if n_pendentes:
         st.info(f"🟡 Você tem **{n_pendentes}** envio(s) aguardando aprovação (de qualquer data). Eles ainda não entram nos valores.")
     secao = navegacao(["📱 Envios", "📉 Vales", "🏅 Premiações"], "nav_extrato")

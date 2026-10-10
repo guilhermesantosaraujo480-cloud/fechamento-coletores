@@ -163,3 +163,32 @@ class TestExportacao(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestQuinzenas(unittest.TestCase):
+    def test_limites_e_periodos(self):
+        self.assertEqual(u.limites_quinzena(date(2026, 2, 20)), (date(2026, 2, 16), date(2026, 2, 28)))
+        self.assertEqual(u.limites_quinzena(date(2026, 10, 15)), (date(2026, 10, 1), date(2026, 10, 15)))
+        self.assertEqual(u.limites_quinzena(date(2026, 12, 31)), (date(2026, 12, 16), date(2026, 12, 31)))
+        self.assertEqual(u.periodo_por_nome("Quinzena anterior", date(2026, 10, 10)), (date(2026, 9, 16), date(2026, 9, 30)))
+        self.assertEqual(u.periodo_por_nome("Quinzena anterior", date(2026, 1, 3)), (date(2025, 12, 16), date(2025, 12, 31)))
+        self.assertEqual(fin.quinzenas_antes(date(2026, 10, 16), 2), [(date(2026, 9, 16), date(2026, 9, 30)), (date(2026, 10, 1), date(2026, 10, 15))])
+
+    def test_saldo_devedor_passa_para_a_proxima_quinzena(self):
+        c = fin.df_coletas([  # Ana produz R$ 20 na 1ª quinzena e R$ 100 na 2ª
+            {"id": 1, "data": "2026-10-05", "coletor": "Ana", "quantidade": 2, "status": "Aprovado", "valor_total": 20.0},
+            {"id": 2, "data": "2026-10-20", "coletor": "Ana", "quantidade": 10, "status": "Aprovado", "valor_total": 100.0}])
+        v = fin.df_vales([{"id": 1, "data": "2026-10-10", "coletor": "Ana", "valor_vale": 50.0},   # 1ª quinzena: devendo 30
+                          {"id": 2, "data": "2026-10-25", "coletor": "Ana", "valor_vale": 10.0}])
+        p = fin.df_premios([])
+        saldos = fin.saldo_anterior(c, v, p, date(2026, 10, 16))
+        self.assertEqual(saldos, {"Ana": -3000})
+        r = fin.resumo_por_coletor(fin.filtrar_periodo(c, "2026-10-16", "2026-10-31"), fin.filtrar_periodo(v, "2026-10-16", "2026-10-31"), p, saldos=saldos)
+        self.assertEqual((r.iloc[0]["Líquido"], r.iloc[0]["Saldo anterior"], r.iloc[0]["A pagar"]), (90.0, -30.0, 60.0))
+        # na 3ª quinzena não sobra dívida: a 2ª fechou positiva
+        self.assertEqual(fin.saldo_anterior(c, v, p, date(2026, 11, 1)), {})
+
+    def test_divida_encadeia_varias_quinzenas(self):
+        c = fin.df_coletas([])
+        v = fin.df_vales([{"id": 1, "data": "2026-09-02", "coletor": "Bia", "valor_vale": 40.0}])
+        self.assertEqual(fin.saldo_anterior(c, v, fin.df_premios([]), date(2026, 10, 16)), {"Bia": -4000})

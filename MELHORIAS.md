@@ -38,6 +38,10 @@
 - Cliques: separa pessoas de robôs; taxa real de clique.
 - IA: mensagens de erro claras e botão "Ver modelos disponíveis".
 
+## Quinzenas
+- Atalhos "Quinzena atual" (padrão) e "Quinzena anterior".
+- Saldo devedor automático: vale que passa da produção é descontado na quinzena seguinte (Fechamento, recibo e extrato do coletor). Considera até 12 quinzenas para trás e assume que líquido positivo foi pago.
+
 ## Recomendações futuras
 - Ligar coletas ao `id` do usuário (hoje é pelo nome).
 - Uma sessão por aparelho (hoje, entrar em outro aparelho derruba o primeiro).

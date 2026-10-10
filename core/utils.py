@@ -10,7 +10,8 @@ try:  # horário oficial de Brasília (sem horário de verão desde 2019)
 except Exception:  # ambiente sem banco de fusos: UTC-3 fixo
     FUSO_BRASILIA = timezone(timedelta(hours=-3))
 
-PERIODOS = ["Hoje", "Últimos 7 dias", "Últimos 30 dias", "Este mês", "Mês passado", "Personalizado"]
+PERIODOS = ["Quinzena atual", "Quinzena anterior", "Hoje", "Últimos 7 dias", "Últimos 30 dias", "Este mês",
+            "Mês passado", "Personalizado"]
 
 
 def agora_br():
@@ -54,8 +55,20 @@ def para_centavos(valor):
     return 0 if v != v else int(round(v * 100))
 
 
+def limites_quinzena(dia):
+    """Quinzena que contém o dia: 1–15 ou 16–último dia do mês."""
+    if dia.day <= 15:
+        return dia.replace(day=1), dia.replace(day=15)
+    primeiro_do_proximo = (dia.replace(day=28) + timedelta(days=4)).replace(day=1)
+    return dia.replace(day=16), primeiro_do_proximo - timedelta(days=1)
+
+
 def periodo_por_nome(nome, hoje):
     """Devolve (inicio, fim) para os atalhos de período."""
+    if nome == "Quinzena atual":
+        return limites_quinzena(hoje)
+    if nome == "Quinzena anterior":
+        return limites_quinzena(limites_quinzena(hoje)[0] - timedelta(days=1))
     if nome == "Hoje":
         return hoje, hoje
     if nome == "Últimos 7 dias":

@@ -6,7 +6,9 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from .utils import brl, data_br
+from datetime import timedelta
+
+from .utils import brl, data_br, limites_quinzena
 
 STATUS = ("Pendente", "Aprovado", "Recusado")
 COLS_COLETAS = ["id", "data", "coletor", "quantidade", "foto_url", "status", "valor_total", "pago"]
@@ -94,9 +96,37 @@ def calcular_fechamento(coletas, vales, premios):
     )
 
 
-def resumo_por_coletor(coletas, vales, premios, coletores=()):
-    """Uma linha por coletor (valores em reais). Inclui coletores sem movimento se informados."""
-    nomes = set(coletores) | set(coletas["coletor"]) | set(vales["coletor"]) | set(premios["coletor"])
+def quinzenas_antes(ini, quantas=12):
+    """As `quantas` quinzenas anteriores à data `ini` (da mais antiga para a mais recente)."""
+    lista, ref = [], ini - timedelta(days=1)
+    for _ in range(quantas):
+        qi, qf = limites_quinzena(ref)
+        lista.append((qi, min(qf, ini - timedelta(days=1))))
+        ref = qi - timedelta(days=1)
+    return lista[::-1]
+
+
+def saldo_anterior(coletas, vales, premios, ini, quantas=12):
+    """Saldo devedor que vem das quinzenas anteriores, por coletor, em centavos (0 ou negativo).
+
+    Quinzena com líquido positivo é paga e zera o saldo; com líquido negativo (vales maiores que a produção)
+    a dívida passa para a seguinte e é abatida automaticamente. Os dados devem cobrir as quinzenas anteriores.
+    """
+    saldo = {}
+    nomes = set(coletas["coletor"]) | set(vales["coletor"]) | set(premios["coletor"])
+    for qi, qf in quinzenas_antes(ini, quantas):
+        c, v, p = (filtrar_periodo(d, qi, qf) for d in (coletas, vales, premios))
+        for nome in nomes:
+            f = calcular_fechamento(filtrar_coletor(c, nome), filtrar_coletor(v, nome), filtrar_coletor(p, nome))
+            saldo[nome] = min(0, saldo.get(nome, 0) + f.liquido)
+    return {n: v for n, v in saldo.items() if v < 0}
+
+
+def resumo_por_coletor(coletas, vales, premios, coletores=(), saldos=None):
+    """Uma linha por coletor (valores em reais). Inclui coletores sem movimento se informados.
+    `saldos`: saída de saldo_anterior(); entra como 'Saldo anterior' e é abatido em 'A pagar'."""
+    saldos = saldos or {}
+    nomes = set(coletores) | set(coletas["coletor"]) | set(vales["coletor"]) | set(premios["coletor"]) | set(saldos)
     nomes = sorted(n for n in nomes if n)
     linhas = []
     for nome in nomes:
@@ -105,9 +135,10 @@ def resumo_por_coletor(coletas, vales, premios, coletores=()):
         linhas.append({
             "Coletor": nome, "Aparelhos": f.aparelhos, "Bruto": f.bruto / 100,
             "Premiações": f.premios / 100, "Vales": f.vales / 100,
-            "Líquido": f.liquido / 100, "Não pago": f.nao_pago / 100,
+            "Líquido": f.liquido / 100, "Saldo anterior": saldos.get(nome, 0) / 100,
+            "A pagar": (f.liquido + saldos.get(nome, 0)) / 100, "Não pago": f.nao_pago / 100,
         })
-    colunas = ["Coletor", "Aparelhos", "Bruto", "Premiações", "Vales", "Líquido", "Não pago"]
+    colunas = ["Coletor", "Aparelhos", "Bruto", "Premiações", "Vales", "Líquido", "Saldo anterior", "A pagar", "Não pago"]
     return pd.DataFrame(linhas, columns=colunas)
 
 
@@ -136,7 +167,9 @@ def serie_diaria(coletas, ini, fim):
     return base.to_frame("Aparelhos")
 
 
-def texto_recibo(coletor, ini, fim, f, gerado_em):
+def texto_recibo(coletor, ini, fim, f, gerado_em, saldo_ant=0):
+    saldo_txt = (f"↩️ *Saldo anterior (vales a descontar):* {brl(saldo_ant / 100)}\n"
+                 f"💵 *A pagar:* {brl((f.liquido + saldo_ant) / 100)}\n-----------------------------\n") if saldo_ant else ""
     return (
         f"*FECHAMENTO DE COLETAS*\n"
         f"*Coletor:* {coletor}\n"
@@ -149,6 +182,7 @@ def texto_recibo(coletor, ini, fim, f, gerado_em):
         f"-----------------------------\n"
         f"🧮 *Valor Líquido:* {brl(f.liquido / 100)}\n"
         f"-----------------------------\n"
+        f"{saldo_txt}"
         f"Gerado em: {gerado_em.strftime('%d/%m/%Y às %H:%M')}"
     )
 

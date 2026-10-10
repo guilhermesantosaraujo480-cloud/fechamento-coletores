@@ -1,4 +1,6 @@
 """Carregamento de dados com cache curto. Toda gravação deve chamar `invalidar()`."""
+from datetime import timedelta
+
 import streamlit as st
 
 from . import armazenamento as arm
@@ -17,6 +19,14 @@ def carregar_financeiro(_sb, ini, fim, coletor="Todos"):
     premios = fin.df_premios(buscar_todos(_sb, "premiacoes", filtros=filtro, faixa=faixa()))
     pendentes = fin.df_coletas(buscar_todos(_sb, "coletas", filtros={**filtro, "status": "Pendente"}))
     return coletas, vales, premios, pendentes
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def saldos_anteriores(_sb, ini, coletor="Todos"):
+    """Saldo devedor (centavos, por coletor) que vem das quinzenas anteriores a `ini`."""
+    inicio = fin.quinzenas_antes(ini)[0][0]
+    coletas, vales, premios, _ = carregar_financeiro(_sb, inicio, ini - timedelta(days=1), coletor)
+    return fin.saldo_anterior(coletas, vales, premios, ini)
 
 
 @st.cache_data(ttl=30, show_spinner=False)
@@ -67,5 +77,6 @@ def url_foto(_sb, valor):
 def invalidar():
     carregar_financeiro.clear()
     carregar_extrato.clear()
+    saldos_anteriores.clear()
     contar_pendentes.clear()
     listar_usuarios.clear()

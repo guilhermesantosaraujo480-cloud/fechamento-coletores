@@ -23,7 +23,7 @@ def filtros_sidebar(coletores):
     hoje = hoje_br()
     with st.sidebar:
         st.markdown("##### 🔍 Filtros")
-        nome = st.selectbox("Período", PERIODOS, index=PERIODOS.index("Este mês"), key="f_periodo")
+        nome = st.selectbox("Período", PERIODOS, index=PERIODOS.index("Quinzena atual"), key="f_periodo")
         if nome == "Personalizado":
             ini = st.date_input("De", value=hoje.replace(day=1), key="f_ini", format="DD/MM/YYYY")
             fim = st.date_input("Até", value=hoje, key="f_fim", format="DD/MM/YYYY")
