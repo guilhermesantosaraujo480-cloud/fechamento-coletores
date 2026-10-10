@@ -1,7 +1,7 @@
-streamlit
-pandas
+streamlit>=1.35
+pandas>=2.0
 openpyxl
-supabase
+supabase>=2.0
 pillow
 streamlit-cookies-controller
 bcrypt
