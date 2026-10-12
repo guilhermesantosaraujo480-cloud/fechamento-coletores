@@ -259,6 +259,9 @@ class FakeSt(types.ModuleType):
         opcoes = list(opcoes)
         return self._resp(key or rotulo, default or (opcoes[0] if opcoes else None))
 
+    def multiselect(self, rotulo, opcoes=(), *a, default=None, key=None, **k):
+        return self._resp(key or rotulo, list(default or []))
+
     def file_uploader(self, rotulo, *a, key=None, **k):
         return self._resp(key or rotulo, None)
 

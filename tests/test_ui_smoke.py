@@ -218,3 +218,62 @@ class TestApp(Base):
             self.rodar_app({"id": 2, "usuario": "ana", "nome_completo": "Ana", "cargo": "COLETOR"})
         self.rodar_app(None)  # tela de login
         self.assertFalse([a for a in ST.avisos if a[0] == "error"], ST.avisos)
+
+
+class TestRotasUI(Base):
+    def banco(self):
+        b = banco()
+        b.tabelas["rota_coletores"] = [
+            {"id": 1, "nome_rota": "GABRIEL", "usuario_id": None, "telefone": "5511987654321", "ativo": True},
+            {"id": 2, "nome_rota": "ANA", "usuario_id": None, "telefone": "", "ativo": True}]
+        b.tabelas["rota_grupos"] = [{"id": 1, "empresa": "Empresa Reintegra", "nome": "Grupo", "destino": "1@g.us", "ativo": True}]
+        return b
+
+    def arquivo(self):
+        import io
+
+        class Arq(io.BytesIO):
+            name = "rota.xls"
+
+            @property
+            def size(self):
+                return len(self.getvalue())
+        from tests.test_rotas import df_reintegra
+        txt = df_reintegra().to_csv(sep="\t", index=False).encode("latin1")
+        return Arq(txt)
+
+    def test_secoes_vazias_e_cheias(self):
+        from ui.adm import rotas
+        for cheio in (True, False):
+            for secao in rotas.SECOES:
+                ST.respostas["nav_rotas"] = secao
+                rotas.render(self.banco() if cheio else fakes.FakeSupabase())
+                self.assertFalse([a for a in ST.avisos if a[0] == "error" and "migracao_v3" not in a[1]], (secao, ST.avisos))
+
+    def test_gerar_e_enviar(self):
+        from ui.adm import rotas
+        enviados = []
+
+        class G:
+            nome = "Fake"
+
+            def enviar_arquivo(self, destino, conteudo, nome, legenda=""):
+                enviados.append((destino, nome))
+        rotas._gateway = lambda: G()
+        sb = self.banco()
+        arq = self.arquivo()
+        ST.respostas["rota_sel_" + f"{arq.name}:{arq.size}"] = ["GABRIEL", "ANA"]
+        ST.respostas.update({"nav_rotas": rotas.SECOES[0], "rota_arquivo": arq,
+                             "rota_confirma": True, "rota_destinos": ["1@g.us"], "Enviar no WhatsApp": True})
+        import tests.test_rotas  # noqa: F401
+        from rotas import envio as e
+        original = e.time.sleep
+        e.time.sleep = lambda s: None
+        try:
+            ST.respostas["📲 Enviar no WhatsApp"] = True
+            rotas.render(sb)
+        finally:
+            e.time.sleep = original
+        self.assertFalse([a for a in ST.avisos if a[0] == "error"], ST.avisos)
+        self.assertTrue(enviados, "nada foi enviado")
+        self.assertTrue(sb.tabelas.get("rota_envios"))

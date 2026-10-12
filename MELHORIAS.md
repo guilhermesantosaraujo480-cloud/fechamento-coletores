@@ -46,3 +46,6 @@
 - Ligar coletas ao `id` do usuário (hoje é pelo nome).
 - Uma sessão por aparelho (hoje, entrar em outro aparelho derruba o primeiro).
 - Rotacionar a chave Gemini que foi colada no chat; ativar RLS (PASSOS 2 e 3 do `migracao.sql`) com a `service_role`.
+
+## Rotas (aba 🚚)
+Detecção automática da empresa pelas colunas, normalização de telefone/CEP, conferência de qualidade, divisão equilibrada por bairro, vínculo coletor↔login, trava contra envio duplicado, histórico, aborto após 3 erros seguidos. Endpoints Evolution v2 / Z-API foram escritos pela documentação e **não testados ao vivo**: use "Enviar mensagem de teste".

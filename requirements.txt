@@ -7,3 +7,4 @@ streamlit-cookies-controller
 bcrypt
 cryptography
 requests
+xlrd

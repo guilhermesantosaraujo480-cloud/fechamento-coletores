@@ -8,7 +8,7 @@ from streamlit_cookies_controller import CookieController  # noqa: E402
 from core import dados, sessao  # noqa: E402
 from core.db import get_supabase  # noqa: E402
 from ui import conta, estilos, login  # noqa: E402
-from ui.adm import auditoria, coletas, emails, fechamento, premiacoes, usuarios, vales, visao_geral  # noqa: E402
+from ui.adm import auditoria, coletas, emails, fechamento, premiacoes, rotas, usuarios, vales, visao_geral  # noqa: E402
 from ui.adm.filtros import filtros_sidebar  # noqa: E402
 from ui.componentes import navegacao  # noqa: E402
 from ui.coletor import comprovantes, enviar, extrato  # noqa: E402
@@ -20,6 +20,7 @@ PAGINAS_ADM = {
     "💵 Fechamento": (fechamento.render, True),
     "📉 Vales": (vales.render, True),
     "🏅 Premiações": (premiacoes.render, True),
+    "🚚 Rotas": (rotas.render, False),
     "👥 Usuários": (usuarios.render, False),
     "📧 E-mails": (emails.render, False),
     "🛡️ Auditoria": (auditoria.render, False),
