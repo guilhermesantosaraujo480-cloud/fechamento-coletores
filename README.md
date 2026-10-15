@@ -29,10 +29,30 @@ tests/                 51 testes (unittest) com banco e Streamlit falsos
 python -m unittest discover -s tests -t . -v
 ```
 
-## 🚚 Rotas → WhatsApp (nova aba)
+## 🚚 Rotas → WhatsApp
 
-1. Rode `migracao_v3.sql` no SQL Editor do Supabase (cria `rota_coletores`, `rota_grupos`, `rota_perfis`, `rota_envios`; já cadastra os 11 coletores dos scripts antigos).
-2. Entre em **🚚 Rotas → 👷 Coletores** e vincule cada coletor ao login (há sugestão automática por nome) ou cadastre novos.
-3. Em **🏢 Empresas e grupos**: cadastre os grupos de WhatsApp de cada empresa. Reintegra e TIM (CSS) já vêm prontas; outras empresas se cadastram mapeando as colunas de uma planilha de exemplo.
-4. Em **🚚 Gerar e enviar**: suba a planilha → o sistema reconhece a empresa, confere problemas, divide por bairro, gera um .xlsx por coletor e envia ao grupo.
-5. Envio automático exige um gateway não oficial (Evolution API ou Z-API) configurado em `WHATS_*` nos secrets. **Use um chip dedicado: há risco de bloqueio do número.** Sem gateway, o app roda em modo manual (baixar planilha + texto pronto para colar).
+**Fluxo recomendado:** distribua na plataforma da empresa (Reintegra/CSS) → baixe o relatório geral → suba em **🚚 Rotas → Gerar e enviar**.
+
+1. Rode `migracao_v3.sql` e depois `migracao_v4.sql` no SQL Editor do Supabase.
+2. **👷 Coletores**: confira os coletores, o **tipo** de cada um (normal / retentativas / depósito) e vincule aos logins (há sugestão automática por nome).
+3. **🏢 Empresas e grupos**: cadastre os grupos de WhatsApp de cada empresa. Reintegra e TIM (CSS) já vêm prontas; outras empresas se cadastram mapeando as colunas de uma planilha de exemplo (inclusive as colunas extras: coletor, agenda, prioridade...).
+4. **Gerar e enviar**: o sistema reconhece a empresa, usa a coluna do coletor que já está na planilha (casando “GUILHERME SANTOS ARAUJO” com GUILHERME; nomes novos ele pergunta uma vez e lembra), confere os dados, coloca avisos por OS, gera uma planilha por coletor e envia. Para as OS sem dono há **🧠 Sugerir coletor** (regras explicadas na própria tela).
+5. **📊 Acompanhamento**: guarde a fotografia do dia (automático ao enviar, ou pelo botão) e compare dias: quem tinha quantas OS, quantas saíram da lista e quanto entrou.
+6. Envio automático exige um gateway **não oficial** (Evolution API ou Z-API) em `WHATS_*` nos secrets. **Use um chip dedicado: há risco de bloqueio do número.** Sem gateway o app roda em modo manual (baixar planilha + texto pronto para colar).
+
+A planilha de cada coletor também leva a coluna **WhatsApp**: um link que abre a conversa com o cliente, já com a mensagem escrita (editável na tela; só celulares, telefone fixo fica em branco). A coluna **Mapa** continua igual. Os dois são links clicáveis no Excel e o texto da célula é o próprio endereço, então o roteirizador importa normalmente.
+
+Coletores “depósito” (OS paradas que você não consegue tirar da plataforma) vêm desmarcados em **Enviar?**: o arquivo é gerado, mas não vai para o WhatsApp. Nenhuma OS é excluída da rota automaticamente (as plataformas reabrem OS “entregue na loja” e “mudou-se”): o sistema só **avisa**.
+
+## ⏱️ Disparo de e-mails em segundo plano
+
+Em **📧 E-mails → 🚀 Disparos** escolha “Em segundo plano”. A campanha vai para uma fila no Supabase e um trabalhador no **GitHub Actions** envia por você, respeitando intervalo e limite diário de cada conta. Você pode fechar a página. Acompanhe, pause, retome ou cancele em **⏱️ Fila**. Se o limite diário acabar, ele continua sozinho no dia seguinte.
+
+Configuração (uma vez):
+1. Rode `migracao_v4.sql` no Supabase.
+2. Suba este projeto para um repositório no GitHub (o `.gitignore` já protege seus segredos).
+3. No GitHub: **Settings → Secrets and variables → Actions → New repository secret** e crie `SUPABASE_URL`, `SUPABASE_KEY` e `CHAVE_CRIPTO` (a mesma do app). Para o trabalhador, prefira a chave **service_role** do Supabase (nunca coloque essa chave no app).
+4. Aba **Actions** do repositório → habilite os fluxos. O arquivo `.github/workflows/disparador.yml` roda a cada 30 minutos e termina em segundos quando não há nada na fila.
+5. *(Opcional, para começar na hora)* crie um token fino em GitHub → Settings → Developer settings → Fine-grained tokens, só para este repositório, permissão **Actions: Read and write**, e coloque nos secrets do app: `GITHUB_REPO`, `GITHUB_TOKEN_DISPARO` (veja `secrets.exemplo.toml`).
+
+Observações: em repositório **privado** o plano grátis do GitHub dá 2.000 min/mês; o fluxo foi feito para gastar pouco (verifica a fila antes de instalar qualquer coisa). Repositório público não tem esse limite, mas aí nunca suba segredos. O GitHub pode atrasar execuções agendadas em horários de pico, e pausa agendamentos de repositórios sem atividade por 60 dias (basta reativar em Actions).

@@ -277,3 +277,142 @@ class TestRotasUI(Base):
         self.assertFalse([a for a in ST.avisos if a[0] == "error"], ST.avisos)
         self.assertTrue(enviados, "nada foi enviado")
         self.assertTrue(sb.tabelas.get("rota_envios"))
+
+
+class TestFilaUI(Base):
+    def test_fila_com_campanhas_e_botoes(self):
+        import pandas as pd
+        from disparador import campanha, colunas, fila, ui
+        sb = banco()
+        df = pd.DataFrame({"BA": ["1", "2", "3"], "Cliente": ["A", "B", "C"], "Email": ["a@x.com", "b@x.com", "c@x.com"]})
+        mapa = colunas.detectar_colunas(df)
+        params = campanha.Parametros({"tipo": "padrao1"}, "Padrão", {"empresa": "E", "num_whatsapp": "55"}, 4, 8, False)
+        ST.respostas["nome_campanha"] = "Minha campanha"
+        ui._enfileirar(sb, df, mapa, params, "Minha campanha")
+        self.assertFalse([a for a in ST.avisos if a[0] == "error"], ST.avisos)
+        camps = fila.listar(sb)
+        self.assertEqual(len(camps), 1)
+        self.assertEqual(len(fila.destinos(sb, camps[0]["id"])), 3)
+        cid = camps[0]["id"]
+        for botao in (f"fp_{cid}", f"fc_{cid}", f"fx_{cid}", f"fe_{cid}", f"fr_{cid}"):
+            ST.respostas.clear()
+            ST.respostas.update({"nav_email": "⏱️ Fila", botao: True})
+            try:
+                ui.renderizar_disparador(sb)
+            except fakes.Reiniciar:
+                pass
+            self.assertFalse([a for a in ST.avisos if a[0] == "error"], (botao, ST.avisos))
+        self.assertEqual(fila.obter(sb, cid)["status"], "cancelada")
+
+
+class TestRotasPlataforma(Base):
+    """Fluxo novo: relatório geral já distribuído na plataforma -> uma planilha por coletor -> WhatsApp -> acompanhamento."""
+
+    def banco(self):
+        b = banco()
+        b.tabelas["rota_coletores"] = [
+            {"id": 1, "nome_rota": "GUILHERME", "usuario_id": None, "telefone": "", "ativo": True, "tipo": "retentativa"},
+            {"id": 2, "nome_rota": "RENILTON", "usuario_id": None, "telefone": "5511987654321", "ativo": True},
+            {"id": 3, "nome_rota": "CARLOS.ALBERTO", "usuario_id": None, "telefone": "", "ativo": True},
+            {"id": 4, "nome_rota": "ARLEIDE.JULIENE", "usuario_id": None, "telefone": "", "ativo": True, "tipo": "deposito"}]
+        b.tabelas["rota_grupos"] = [{"id": 1, "empresa": "Reintegra", "nome": "Grupo", "destino": "1@g.us", "ativo": True}]
+        return b
+
+    def arquivo(self):
+        import io
+        from tests.test_rotas import df_reintegra_distribuido
+
+        class Arq(io.BytesIO):
+            name = "relatorio.xls"
+
+            @property
+            def size(self):
+                return len(self.getvalue())
+        return Arq(df_reintegra_distribuido().to_csv(sep="\t", index=False).encode("latin1"))
+
+    def preparar(self, rotas, sb, arq, gateway=None):
+        chave = f"{arq.name}:{arq.size}"
+        rotas._gateway = lambda: gateway
+        ST.respostas.update({"nav_rotas": rotas.SECOES[0], "rota_arquivo": arq})
+        return chave
+
+    def test_planilha_distribuida_gera_um_pacote_por_coletor_e_sugere(self):
+        from ui.adm import rotas
+        enviados = []
+
+        class G:
+            nome = "Fake"
+
+            def enviar_arquivo(self, destino, conteudo, nome, legenda=""):
+                enviados.append((destino, nome, legenda))
+        sb, arq = self.banco(), self.arquivo()
+        chave = self.preparar(rotas, sb, arq, G())
+        ST.respostas.update({f"rota_sug_btn_{chave}": True, "rota_confirma": True, "rota_destinos": ["1@g.us"],
+                             "📲 Enviar no WhatsApp": True, "rota_data": __import__("datetime").date(2026, 10, 13)})
+        from rotas import envio as e
+        original = e.time.sleep
+        e.time.sleep = lambda s: None
+        try:
+            rotas.render(sb)
+        finally:
+            e.time.sleep = original
+        self.assertFalse([a for a in ST.avisos if a[0] == "error"], ST.avisos)
+        nomes_arquivos = " ".join(n for _, n, _ in enviados)
+        self.assertIn("Rota_GUILHERME_", nomes_arquivos)
+        self.assertIn("Rota_RENILTON_", nomes_arquivos)
+        self.assertNotIn("ARLEIDE", nomes_arquivos)           # depósito não vai para o WhatsApp
+        self.assertTrue(any("agendada(s) p/ hoje" in leg for _, _, leg in enviados))
+        self.assertTrue(sb.tabelas.get("rota_snapshots"), "fotografia do dia não foi guardada")
+        self.assertTrue(sb.tabelas.get("rota_envios"))
+        coletores_no_snapshot = {r["coletor"] for r in sb.tabelas["rota_snapshots"]}
+        self.assertNotIn("(sem coletor)", coletores_no_snapshot)  # as sugestões foram aplicadas
+
+    def test_modo_manual_sem_gateway(self):
+        from ui.adm import rotas
+        sb, arq = self.banco(), self.arquivo()
+        self.preparar(rotas, sb, arq, None)
+        rotas.render(sb)
+        self.assertFalse([a for a in ST.avisos if a[0] == "error"], ST.avisos)
+
+    def test_nome_desconhecido_e_lembrar_apelido(self):
+        from ui.adm import rotas
+        sb = self.banco()
+        sb.tabelas["rota_coletores"] = [c for c in sb.tabelas["rota_coletores"] if c["nome_rota"] != "GUILHERME"]
+        arq = self.arquivo()
+        chave = self.preparar(rotas, sb, arq, None)
+        ST.respostas.update({f"rota_aj_{chave}_0": "RENILTON", f"rota_aj_ok_{chave}": True})
+        rotas.render(sb)
+        self.assertFalse([a for a in ST.avisos if a[0] == "error"], ST.avisos)
+        self.assertEqual(sb.tabelas["rota_apelidos"][0]["nome_rota"], "RENILTON")
+        self.assertEqual(sb.tabelas["rota_apelidos"][0]["apelido"], "GUILHERME SANTOS ARAUJO")
+
+    def test_acompanhamento_com_duas_fotografias(self):
+        import pandas as pd
+        from rotas import acompanhamento, avisos, nomes, perfis as pf, processamento as pr, repositorio as repo
+        from ui.adm import rotas
+        from tests.test_rotas import COLETORES, df_reintegra_distribuido
+        sb = self.banco()
+        can, _ = pr.aplicar_perfil(df_reintegra_distribuido(), pf.REINTEGRA)
+        can = avisos.aplicar_avisos(can, date(2026, 10, 13))
+        atrib = pd.Series(nomes.atribuir(can["coletor"], COLETORES), index=can.index, dtype=object)
+        repo.salvar_snapshot(sb, acompanhamento.montar_snapshot(can, atrib, "Reintegra", date(2026, 10, 12)))
+        repo.salvar_snapshot(sb, acompanhamento.montar_snapshot(can.iloc[:6], atrib.iloc[:6], "Reintegra", date(2026, 10, 13)))
+        ST.respostas.update({"nav_rotas": "📊 Acompanhamento", "acomp_empresa": "Reintegra", "acomp_hist": True})
+        rotas.render(sb)
+        self.assertFalse([a for a in ST.avisos if a[0] == "error"], ST.avisos)
+        ST.respostas["acomp_empresa"] = "TIM (CSS)"   # empresa sem fotografia: mensagem amigável, sem erro
+        rotas.render(sb)
+        self.assertFalse([a for a in ST.avisos if a[0] == "error"], ST.avisos)
+
+    def test_coletores_com_tipo_e_apelidos(self):
+        from ui.adm import rotas
+        sb = self.banco()
+        ST.respostas.update({"nav_rotas": "👷 Coletores", "rc_nome_0": "NOVO", "rc_tipo_0": "deposito", "rc_ok_0": True,
+                             "ap_novo": "Fulano de Tal", "ap_rota": "RENILTON", "ap_salvar": True})
+        try:
+            rotas.render(sb)
+        except fakes.Reiniciar:
+            pass
+        self.assertFalse([a for a in ST.avisos if a[0] == "error"], ST.avisos)
+        novo = next(c for c in sb.tabelas["rota_coletores"] if c["nome_rota"] == "NOVO")
+        self.assertEqual(novo["tipo"], "deposito")

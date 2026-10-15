@@ -48,4 +48,17 @@
 - Rotacionar a chave Gemini que foi colada no chat; ativar RLS (PASSOS 2 e 3 do `migracao.sql`) com a `service_role`.
 
 ## Rotas (aba 🚚)
-Detecção automática da empresa pelas colunas, normalização de telefone/CEP, conferência de qualidade, divisão equilibrada por bairro, vínculo coletor↔login, trava contra envio duplicado, histórico, aborto após 3 erros seguidos. Endpoints Evolution v2 / Z-API foram escritos pela documentação e **não testados ao vivo**: use "Enviar mensagem de teste".
+- Detecção automática da empresa pelas colunas; leitura do relatório geral (77/177 colunas) e do `.xls` separado por TAB.
+- **Usa o coletor que já está na planilha**, com casamento de nomes (primeiro nome, “(Coletor)”, acentos, erros de digitação via apelidos) e aprendizado dos nomes novos.
+- Tipos de coletor: normal, retentativas e depósito (depósito não recebe WhatsApp por padrão).
+- Avisos por OS (prioridade máxima, agenda de hoje/amanhã/vencida, área de risco, reaberta, já tentada, tempo na fila) em coluna opcional **Avisos** e no resumo da mensagem. Nada é excluído.
+- Bairro sujo (“SAO PAULO”, “bairro”) agrupado pelo prefixo do CEP; acentos/maiúsculas ignorados ao agrupar.
+- **Sugestão de coletor** para OS sem dono: mudou-se → depósito, já foi à rua → retentativas, OS nova → quem já atende o bairro/CEP/cidade, com teto de carga.
+- Arquivo “divisão para a plataforma” (ID + coletor) para conferir ou subir em massa (formato exato por plataforma ainda a confirmar).
+- **Acompanhamento**: fotografia diária (sem dados pessoais) e comparação entre dias por coletor. “Saiu da lista” não prova coleta.
+- Trava contra envio duplicado, histórico, aborto após 3 erros seguidos. Endpoints Evolution v2 / Z-API foram escritos pela documentação e **não testados ao vivo**: use “Enviar mensagem de teste”.
+
+## Disparo em segundo plano
+- Fila no Supabase + trabalhador no GitHub Actions (cron de 30 min e acionamento imediato opcional).
+- Pausar, retomar, cancelar, reenviar erros; continua sozinho no dia seguinte quando o limite diário acaba.
+- Segurança contra duplicidade: uma reserva por campanha, execução única no Actions, e recuperação de queda (o que ficou “enviando” é conferido no histórico antes de voltar para a fila).

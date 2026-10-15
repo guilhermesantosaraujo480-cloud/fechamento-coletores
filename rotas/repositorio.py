@@ -15,12 +15,19 @@ def listar_coletores(sb, somente_ativos=False):
     return q.order("nome_rota").execute().data or []
 
 
-def criar_coletor(sb, nome_rota, telefone="", usuario_id=None):
+def tipos_dos_coletores(lista):
+    """{nome_rota: 'normal'|'retentativa'|'deposito'} (coluna `tipo` pode não existir antes da migracao_v4)."""
+    return {c["nome_rota"]: (c.get("tipo") or "normal") for c in lista}
+
+
+def criar_coletor(sb, nome_rota, telefone="", usuario_id=None, tipo="normal"):
     nome = nome_rota.strip().upper()
     if sb.table("rota_coletores").select("id").eq("nome_rota", nome).limit(1).execute().data:
         raise ValueError("Já existe um coletor de rota com esse nome.")
-    sb.table("rota_coletores").insert({"nome_rota": nome, "telefone": telefone.strip(),
-                                       "usuario_id": usuario_id, "ativo": True}).execute()
+    linha = {"nome_rota": nome, "telefone": telefone.strip(), "usuario_id": usuario_id, "ativo": True}
+    if tipo != "normal":  # só manda a coluna nova quando é preciso (assim funciona mesmo sem a migracao_v4)
+        linha["tipo"] = tipo
+    sb.table("rota_coletores").insert(linha).execute()
 
 
 def atualizar_coletor(sb, coletor_id, **campos):
@@ -82,3 +89,59 @@ def enviados_na_data(sb, empresa, data_rota):
 
 def historico(sb, limite=300):
     return sb.table("rota_envios").select("*").order("id", desc=True).limit(limite).execute().data or []
+
+
+# ------------------------------------------------------------------------ apelidos
+def listar_apelidos(sb):
+    """{nome normalizado como aparece no relatório: nome_rota}. Sem a tabela (migracao_v4) devolve vazio."""
+    try:
+        return {r["apelido"]: r["nome_rota"] for r in sb.table("rota_apelidos").select("*").execute().data or []}
+    except Exception:
+        return {}
+
+
+def salvar_apelido(sb, apelido_normalizado, nome_rota):
+    sb.table("rota_apelidos").upsert({"apelido": apelido_normalizado, "nome_rota": nome_rota}, on_conflict="apelido").execute()
+
+
+def remover_apelido(sb, apelido_normalizado):
+    sb.table("rota_apelidos").delete().eq("apelido", apelido_normalizado).execute()
+
+
+# ------------------------------------------------------------------ fotografias diárias
+def salvar_snapshot(sb, linhas, tamanho=500):
+    """Grava (ou atualiza, se for o mesmo dia) as linhas. Devolve quantas foram gravadas."""
+    for i in range(0, len(linhas), tamanho):
+        sb.table("rota_snapshots").upsert(linhas[i:i + tamanho], on_conflict="chave").execute()
+    return len(linhas)
+
+
+def datas_de_snapshot(sb, empresa, quantas=7):
+    """As datas mais recentes que têm fotografia (mais nova primeiro)."""
+    datas, limite = [], None
+    for _ in range(quantas):
+        q = sb.table("rota_snapshots").select("data").eq("empresa", empresa)
+        if limite:
+            q = q.lt("data", limite)
+        linhas = q.order("data", desc=True).limit(1).execute().data or []
+        if not linhas:
+            break
+        datas.append(str(linhas[0]["data"])[:10])
+        limite = datas[-1]
+    return datas
+
+
+def ler_snapshot(sb, empresa, data):
+    return buscar_todos(sb, "rota_snapshots", "os_id,coletor,bairro,cidade,motivo,urgente",
+                        {"empresa": empresa, "data": str(data)}, ordem="os_id")
+
+
+def limpar_snapshots_antigos(sb, dias=60):
+    """Mantém só os últimos `dias` (o banco gratuito é pequeno). Não levanta erro."""
+    try:
+        from datetime import timedelta
+        from core.utils import hoje_br
+        corte = str(hoje_br() - timedelta(days=dias))
+        sb.table("rota_snapshots").delete().lt("data", corte).execute()
+    except Exception:
+        pass

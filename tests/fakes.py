@@ -301,10 +301,12 @@ class FakeSt(types.ModuleType):
 
 def instalar():
     """Coloca o Streamlit falso em sys.modules (só se o de verdade não estiver instalado)."""
+    existente = sys.modules.get("streamlit")
+    if isinstance(existente, FakeSt):
+        return existente  # já instalado: todos os testes compartilham o mesmo Streamlit falso
     try:
         import streamlit  # noqa: F401
-        if not isinstance(streamlit, FakeSt):
-            return None
+        return None  # Streamlit de verdade instalado: não substitui
     except Exception:
         pass
     st = FakeSt()

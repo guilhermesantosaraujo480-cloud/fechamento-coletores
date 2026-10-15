@@ -10,13 +10,18 @@ from core import auditoria, auth, dados, sessao
 from core.config import cfg
 from core.exportacao import gerar_excel
 from core.utils import data_br, hoje_br
-from rotas import envio, leitura, mensagens, perfis as pf, processamento as pr, repositorio as repo, vinculos
+from rotas import (acompanhamento, avisos, distribuicao, envio, leitura, mensagens, nomes, perfis as pf,
+                   processamento as pr, repositorio as repo, vinculos)
 from rotas.whatsapp import ErroWhats, criar_gateway
 from ui.adm.usuarios import PADRAO_LOGIN
 from ui.componentes import baixar_excel, cabecalho, cartao, metricas, navegacao, vazio
 
-SECOES = ["🚚 Gerar e enviar", "👷 Coletores", "🏢 Empresas e grupos", "📜 Histórico"]
-DICA_SQL = "Rode o `migracao_v3.sql` no Supabase (SQL Editor) para criar as tabelas da aba Rotas."
+SECOES = ["🚚 Gerar e enviar", "📊 Acompanhamento", "👷 Coletores", "🏢 Empresas e grupos", "📜 Histórico"]
+DICA_SQL = "Rode o `migracao_v3.sql` e o `migracao_v4.sql` no Supabase (SQL Editor) para criar as tabelas da aba Rotas."
+MODO_PLATAFORMA = "📋 Usar o coletor que já está na planilha"
+MODO_BAIRRO = "Dividir por bairro (equilibrado)"
+MODO_PRIMEIRO = "Tudo para o primeiro da lista"
+ICONE_TIPO = {"normal": "", "retentativa": "🔁 retentativas", "deposito": "📦 depósito"}
 
 
 def _usuario():
@@ -46,66 +51,185 @@ def _planilha_bruta():
 
 
 def _escolher_perfil(perfis, bruto, chave):
-    nomes = [p.nome for p in perfis]
+    lista_nomes = [p.nome for p in perfis]
     detectado = pf.detectar_perfil(bruto.columns, perfis)
-    escolha = st.selectbox("Empresa", nomes, index=nomes.index(detectado.nome) if detectado else 0,
+    escolha = st.selectbox("Empresa", lista_nomes, index=lista_nomes.index(detectado.nome) if detectado else 0,
                            key=f"rota_empresa_{chave}")
     if detectado:
         st.caption(f"🔎 Reconheci a planilha como **{detectado.nome}** pelas colunas. Mude acima se estiver errado.")
     else:
         st.warning("Não reconheci a empresa pelas colunas. Escolha acima ou cadastre em **Empresas e grupos**.")
-    return perfis[nomes.index(escolha)]
+    return perfis[lista_nomes.index(escolha)]
 
 
 def _conferencia(can, problemas):
     graves = int((problemas["Gravidade"] == "⚠️").sum()) if not problemas.empty else 0
-    metricas([("📦 Coletas", len(can)), ("📍 Bairros", can["bairro"].replace("", pd.NA).nunique()),
+    metricas([("📦 Coletas", len(can)), ("📍 Bairros", can["bairro_ef"].nunique()),
               ("☎️ Com telefone", int(can["tel_ok"].sum())), ("⚠️ Pontos de atenção", graves)])
+    c = avisos.contagem(can)
+    if any(c[k] for k in ("prioridade", "hoje", "vencidas", "risco")):
+        st.warning(avisos.linha_resumo(c) + "  — veja a coluna **Avisos** na tabela abaixo.")
     if not problemas.empty:
         with st.expander(f"Ver {len(problemas)} ponto(s) de atenção"):
             st.dataframe(problemas, hide_index=True, use_container_width=True)
 
 
-def _distribuir(can, coletores, chave, perfil):
-    c1, c2, c3 = st.columns([3, 2, 1])
-    escolhidos = c1.multiselect("Coletores desta rota", coletores, key=f"rota_sel_{chave}")
-    modo = c2.radio("Distribuição", ["Dividir por bairro (equilibrado)", "Tudo para o primeiro da lista"],
-                    key=f"rota_modo_{chave}")
-    data_rota = c3.date_input("Data da rota", value=hoje_br(), format="DD/MM/YYYY", key=f"rota_data_{chave}")
+def _opcoes():
+    with cartao():
+        c1, c2, c3, c4, c5 = st.columns([1.3, 1.8, 1.8, 1.5, 2])
+        data_rota = c1.date_input("Data da rota", value=hoje_br(), format="DD/MM/YYYY", key="rota_data")
+        urgentes = c2.checkbox("🔴 Urgentes no topo", value=False, key="rota_urgentes",
+                               help="Prioridade máxima, agenda de hoje e agenda vencida vêm primeiro em cada planilha.")
+        avisos_col = c3.checkbox("➕ Coluna **Avisos**", value=True, key="rota_avisos")
+        mapa = c4.checkbox("🗺️ Coluna **Mapa**", value=True, key="rota_mapa")
+        whats = c5.checkbox("💬 Coluna **WhatsApp** (link do cliente)", value=True, key="rota_whats",
+                            help="Link que abre a conversa com o cliente já com a mensagem escrita. Só para celulares; "
+                                 "telefone fixo fica em branco.")
+        modelo = pr.MENSAGEM_WHATS_PADRAO
+        if whats:
+            with st.expander("✏️ Mensagem que vai no link do WhatsApp"):
+                modelo = st.text_area("Mensagem (use {cliente} para o primeiro nome e {coletor} para o nome do coletor)",
+                                      value=pr.MENSAGEM_WHATS_PADRAO, height=80, key="rota_msg_whats")
+                st.caption("Exemplo: " + pr.link_whatsapp("11987654321", "", "MARIA DA SILVA", "GEOVAN", modelo))
+    return data_rota, urgentes, avisos_col, mapa, whats, modelo
+
+
+def _casar_nomes(sb, can, coletores, chave):
+    """Liga o nome do coletor que veio na planilha ao coletor da rota. Devolve a série de coletores (SEM_COLETOR se vazio)."""
+    apelidos = repo.listar_apelidos(sb)
+    tabela = nomes.mapear(can["coletor"], coletores, apelidos)
+    ajustes = {}
+    desconhecidos = [t for t in tabela if t["rota"] is None]
+    with st.expander(f"🔤 Nomes do coletor na planilha ({len(tabela)})" + (f" — ⚠️ {len(desconhecidos)} não reconhecido(s)" if desconhecidos else " ✅"),
+                     expanded=bool(desconhecidos)):
+        st.dataframe([{"Nome na planilha": t["bruto"], "Coletor da rota": t["rota"] or "— não reconhecido —",
+                       "Como casei": t["origem"], "OS": t["qtd"]} for t in tabela], hide_index=True, use_container_width=True)
+        if desconhecidos:
+            st.caption("Escolha quem é cada um. Marque “lembrar” para o sistema não perguntar de novo.")
+            lembrar = st.checkbox("💾 Lembrar essas ligações para os próximos relatórios", value=True, key=f"rota_lembrar_{chave}")
+            for k, t in enumerate(desconhecidos):
+                escolha = st.selectbox(f"{t['bruto']}  ({t['qtd']} OS)", coletores, index=None, placeholder="Escolha o coletor...",
+                                       key=f"rota_aj_{chave}_{k}")
+                if escolha:
+                    ajustes[t["bruto"]] = escolha
+            if ajustes and lembrar and st.button("Salvar ligações", key=f"rota_aj_ok_{chave}"):
+                try:
+                    for bruto, rota in ajustes.items():
+                        repo.salvar_apelido(sb, nomes.normalizar_nome(bruto), rota)
+                    st.toast("Ligações salvas.", icon="🔗")
+                except Exception as erro:
+                    st.error(f"Não consegui salvar (rodou o `migracao_v4.sql`?): {erro}")
+    return pd.Series(nomes.atribuir(can["coletor"], coletores, apelidos, ajustes), index=can.index, dtype=object)
+
+
+def _sugerir(can, atrib, tipos, escolhidos, chave):
+    """Botão que sugere coletor para as OS sem dono (regras explicáveis). Devolve (atrib com sugestões, razões)."""
+    sem = int((atrib == pr.SEM_COLETOR).sum())
+    razoes = pd.Series("", index=can.index, dtype=object)
+    if not sem:
+        return atrib, razoes
+    chave_sug = f"rota_sug_{chave}"
+    with cartao():
+        st.markdown(f"**🧠 {sem} OS sem coletor.** O sistema pode sugerir quem leva cada uma.")
+        st.caption("Regras: “mudou-se” → depósito · já foi à rua → retentativas · OS nova → quem já atende o bairro/CEP, "
+                   "depois quem atende a cidade com menos carga. Nada é enviado antes de você conferir.")
+        normais = [c for c in escolhidos if tipos.get(c, "normal") == "normal"]
+        quem = st.multiselect("Quem pode receber OS novas", normais, default=normais, key=f"rota_quem_{chave}")
+        b1, b2 = st.columns(2)
+        if b1.button("🧠 Sugerir coletor para as OS sem dono", type="primary", use_container_width=True, key=f"rota_sug_btn_{chave}"):
+            st.session_state[chave_sug] = distribuicao.sugerir(can, atrib, tipos, quem)
+        if st.session_state.get(chave_sug) is not None and b2.button("Desfazer sugestões", use_container_width=True, key=f"rota_sug_off_{chave}"):
+            st.session_state.pop(chave_sug, None)
+    sug = st.session_state.get(chave_sug)
+    if sug is not None and not sug.empty:
+        atrib = atrib.copy()
+        atrib.loc[sug.index] = sug["sugestao"]
+        razoes.loc[sug.index] = sug["razao"]
+        resumo = sug["sugestao"].value_counts()
+        st.success("Sugestão aplicada: " + " · ".join(f"{c} +{n}" for c, n in resumo.items()) + ". Ajuste na tabela se quiser.")
+    return atrib, razoes
+
+
+def _distribuir(sb, can, coletores, tipos, chave, perfil):
+    tem_plataforma = bool((can["coletor"] != "").any())
+    modos = ([MODO_PLATAFORMA] if tem_plataforma else []) + [MODO_BAIRRO, MODO_PRIMEIRO]
+    modo = st.radio("Distribuição", modos, horizontal=True, key=f"rota_modo_{chave}",
+                    help="Se você já distribuiu na plataforma da empresa, use o coletor que veio na planilha.")
+    razoes = pd.Series("", index=can.index, dtype=object)
+    if modo == MODO_PLATAFORMA:
+        atrib = _casar_nomes(sb, can, coletores, chave)
+        achados = [c for c in sorted(set(atrib) - {pr.SEM_COLETOR})]
+        escolhidos = st.multiselect("Coletores desta rota", coletores, default=achados, key=f"rota_sel_{chave}_plat",
+                                    help="Já vêm marcados os coletores que aparecem na planilha. Tire alguém para deixar as OS dele de fora.")
+        atrib = atrib.where(atrib.isin(escolhidos), pr.SEM_COLETOR)
+        atrib, razoes = _sugerir(can, atrib, tipos, escolhidos, chave)
+        escolhidos = sorted(set(escolhidos) | (set(atrib) - {pr.SEM_COLETOR}))
+    else:
+        escolhidos = st.multiselect("Coletores desta rota", coletores, key=f"rota_sel_{chave}")
+        if not escolhidos:
+            st.info("Escolha quem vai fazer esta rota.")
+            return None, None
+        atrib = (pr.dividir_entre(can, escolhidos) if modo == MODO_BAIRRO
+                 else pd.Series(escolhidos[0], index=can.index, dtype=object))
     if not escolhidos:
-        st.info("Escolha quem vai fazer esta rota.")
-        return None, None, None
-    atrib = (pr.dividir_entre(can, escolhidos) if modo.startswith("Dividir")
-             else pd.Series(escolhidos[0], index=can.index, dtype=object))
-    versao = hash((chave, perfil.nome, tuple(escolhidos), modo)) & 0xFFFFFF
-    tela = can[["id", "nome", "endereco_completo", "bairro", "cidade", "telefone"]].copy()
+        st.info("Nenhum coletor reconhecido. Escolha quem vai fazer esta rota.")
+        return None, None
+    versao = hash((chave, perfil.nome, tuple(escolhidos), modo, tuple(atrib.tolist()))) & 0xFFFFFF
+    tela = can[["id", "nome", "endereco_completo", "bairro", "avisos"]].copy()
+    if razoes.any():
+        tela["Por que"] = razoes
     tela["Coletor"] = atrib
-    st.caption("A divisão acima é automática. Para trocar uma coleta de coletor, use a coluna **Coletor** da tabela.")
+    st.caption("Para trocar uma coleta de coletor, use a coluna **Coletor** da tabela (clique e escolha).")
     editado = st.data_editor(
-        tela, key=f"rota_editor_{versao}", use_container_width=True,
+        tela, key=f"rota_editor_{versao}", use_container_width=True, height=360,
         disabled=[c for c in tela.columns if c != "Coletor"],
-        column_config={"id": "ID", "nome": "Cliente", "endereco_completo": "Endereço", "bairro": "Bairro",
-                       "cidade": "Cidade", "telefone": "Telefone",
+        column_config={"id": "ID", "nome": "Cliente", "endereco_completo": "Endereço", "bairro": "Bairro", "avisos": "Avisos",
                        "Coletor": st.column_config.SelectboxColumn("Coletor", options=escolhidos + [pr.SEM_COLETOR], required=True)})
-    return escolhidos, editado["Coletor"].reindex(can.index), data_rota
+    return escolhidos, editado["Coletor"].reindex(can.index)
 
 
-def _pacotes(sb, can, atrib, escolhidos, perfil, data_rota, incluir_mapa):
-    cadastro = {c["nome_rota"]: c for c in repo.listar_coletores(sb)}
+def _pacotes(sb, can, atrib, escolhidos, perfil, data_rota, incluir_mapa, incluir_avisos, incluir_whats=False, modelo_whats=None):
+    lista = repo.listar_coletores(sb)
+    cadastro = {c["nome_rota"]: c for c in lista}
+    tipos = repo.tipos_dos_coletores(lista)
     pacotes = []
     for nome in escolhidos:
         sub = can[atrib == nome]
         if sub.empty:
             continue
-        saida = pr.montar_saida(sub, perfil, incluir_mapa)
+        saida = pr.montar_saida(sub, perfil, incluir_mapa, incluir_avisos, incluir_whats, modelo_whats, coletor=nome)
         pacotes.append({
-            "coletor": nome, "qtd": len(sub), "sub": sub,
+            "coletor": nome, "qtd": len(sub), "sub": sub, "tipo": tipos.get(nome, "normal"),
+            "urgentes": int(sub["urgente"].sum()),
             "arquivo": f"Rota_{nome}_{data_rota:%d.%m.%Y}_{perfil.sufixo}.xlsx",
             "conteudo": gerar_excel({"Rota": saida}),
             "mensagem": mensagens.mensagem_rota(perfil.nome, nome, data_rota, sub),
             "telefone": pr.numero_whatsapp(cadastro.get(nome, {}).get("telefone", "")),
         })
     return pacotes
+
+
+def _escolher_quem_recebe(pacotes):
+    """Tabela com 'Enviar?' marcado para todos, menos os coletores de depósito."""
+    base = pd.DataFrame([{"Enviar?": p["tipo"] != "deposito", "Coletor": p["coletor"], "Coletas": p["qtd"],
+                          "Urgentes": p["urgentes"], "Bairros": p["sub"]["bairro_ef"].nunique(),
+                          "Tipo": ICONE_TIPO.get(p["tipo"], "") or "normal",
+                          "WhatsApp": "sim" if p["telefone"] else "—"} for p in pacotes])
+    versao = hash(tuple((p["coletor"], p["qtd"]) for p in pacotes)) & 0xFFFFFF
+    editado = st.data_editor(base, hide_index=True, use_container_width=True, key=f"rota_quem_envia_{versao}",
+                             disabled=[c for c in base.columns if c != "Enviar?"],
+                             column_config={"Enviar?": st.column_config.CheckboxColumn("Enviar?")})
+    marcados = set(editado.loc[editado["Enviar?"], "Coletor"])
+    if any(p["tipo"] == "deposito" for p in pacotes):
+        st.caption("📦 Coletores de **depósito** (OS paradas) vêm desmarcados: o arquivo é gerado, mas não vai para o WhatsApp.")
+    return [p for p in pacotes if p["coletor"] in marcados]
+
+
+def _guardar_fotografia(sb, can, atrib, perfil, data_rota):
+    linhas = acompanhamento.montar_snapshot(can, atrib, perfil.nome, data_rota)
+    n = repo.salvar_snapshot(sb, linhas)
+    repo.limpar_snapshots_antigos(sb)
+    return n
 
 
 def _modo_manual(pacotes, perfil, data_rota):
@@ -115,12 +239,15 @@ def _modo_manual(pacotes, perfil, data_rota):
         with st.expander(f"👷 {p['coletor']} — {p['qtd']} coleta(s)"):
             st.download_button("📥 Baixar planilha", p["conteudo"], file_name=p["arquivo"], key=f"dl_{p['coletor']}",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            st.caption("Mensagem curta (legenda do arquivo):")
+            st.code(p["mensagem"], language="text")
             texto = mensagens.lista_para_copiar(perfil.nome, p["coletor"], data_rota, p["sub"])
+            st.caption("Lista completa em texto:")
             st.code(texto, language="text")
             st.link_button("🟢 Abrir WhatsApp com este texto", "https://api.whatsapp.com/send?text=" + urllib.parse.quote(texto))
 
 
-def _enviar(sb, gateway, pacotes, perfil, data_rota):
+def _enviar(sb, gateway, pacotes, perfil, data_rota, depois=None):
     grupos = repo.listar_grupos(sb, perfil.nome)
     rotulos = {g["destino"]: f"{g['nome'] or g['destino']}" for g in grupos}
     destinos = st.multiselect("Enviar para o grupo", list(rotulos), format_func=rotulos.get,
@@ -149,6 +276,12 @@ def _enviar(sb, gateway, pacotes, perfil, data_rota):
     resultados, parada = envio.enviar_rotas(gateway, pacotes, destinos, registrar, individual=individual)
     ok = sum(r.status == "enviado" for r in resultados)
     auditoria.registrar(sb, usuario, "rota_enviada", f"{perfil.nome} {data_br(data_rota)}: {ok}/{len(resultados)} mensagens")
+    if ok and depois:
+        try:
+            depois()
+            st.caption("📸 Fotografia do dia guardada para o acompanhamento.")
+        except Exception as erro:
+            st.caption(f"Não consegui guardar a fotografia do dia (rodou o `migracao_v4.sql`?): {erro}")
     (st.success if ok == len(resultados) and not parada else st.warning)(f"{ok} de {len(resultados)} mensagem(ns) enviadas.")
     if parada:
         st.error(parada)
@@ -158,13 +291,17 @@ def _enviar(sb, gateway, pacotes, perfil, data_rota):
 def _gerar(sb):
     try:
         perfis = repo.listar_perfis(sb)
-        coletores = [c["nome_rota"] for c in repo.listar_coletores(sb, somente_ativos=True)]
+        lista = repo.listar_coletores(sb)
     except Exception as erro:
         st.error(f"{DICA_SQL}\n\nDetalhe: {erro}")
         return
-    if not coletores:
+    ativos = [c["nome_rota"] for c in lista if c["ativo"]]
+    tipos = repo.tipos_dos_coletores(lista)
+    if not ativos:
         vazio("Cadastre os coletores na seção **Coletores** primeiro.")
         return
+    st.caption("Fluxo: distribua na plataforma da empresa → baixe o relatório geral → suba aqui. "
+               "O sistema separa por coletor, confere e manda no WhatsApp.")
     chave, bruto = _planilha_bruta()
     if bruto is None:
         return
@@ -177,40 +314,113 @@ def _gerar(sb):
     if can.empty:
         st.error("A planilha não tem nenhuma linha com dados.")
         return
-    can = pr.ordenar_rota(can)
+    data_rota, urgentes, incluir_avisos, incluir_mapa, incluir_whats, modelo_whats = _opcoes()
+    can = pr.ordenar_rota(avisos.aplicar_avisos(can, data_rota), urgentes_primeiro=urgentes)
     _conferencia(can, pr.checar_qualidade(can))
 
     st.markdown("##### Distribuição")
-    escolhidos, atrib, data_rota = _distribuir(can, coletores, chave, perfil)
+    escolhidos, atrib = _distribuir(sb, can, ativos, tipos, chave, perfil)
     if escolhidos is None:
         return
     sem = int((atrib == pr.SEM_COLETOR).sum())
     if sem:
         st.warning(f"{sem} coleta(s) sem coletor: não serão enviadas.")
-    incluir_mapa = st.checkbox("Incluir coluna **Mapa** (link do Google Maps de cada endereço)", value=True, key="rota_mapa")
-    pacotes = _pacotes(sb, can, atrib, escolhidos, perfil, data_rota, incluir_mapa)
+    pacotes = _pacotes(sb, can, atrib, escolhidos, perfil, data_rota, incluir_mapa, incluir_avisos, incluir_whats, modelo_whats)
     if not pacotes:
         return
-    st.dataframe(pd.DataFrame([{"Coletor": p["coletor"], "Coletas": p["qtd"],
-                                "Bairros": p["sub"]["bairro"].replace("", pd.NA).nunique(),
-                                "WhatsApp cadastrado": "sim" if p["telefone"] else "—"} for p in pacotes]),
-                 hide_index=True, use_container_width=True)
+    st.markdown("##### Quem recebe")
+    para_enviar = _escolher_quem_recebe(pacotes)
 
     memoria = io.BytesIO()
     with zipfile.ZipFile(memoria, "w", zipfile.ZIP_DEFLATED) as z:
         for p in pacotes:
             z.writestr(p["arquivo"], p["conteudo"])
-    st.download_button("📦 Baixar todas as planilhas (.zip)", memoria.getvalue(), file_name=f"Rotas_{data_rota:%d.%m.%Y}_{perfil.sufixo}.zip",
+    b1, b2, b3 = st.columns(3)
+    b1.download_button("📦 Baixar todas as planilhas (.zip)", memoria.getvalue(), file_name=f"Rotas_{data_rota:%d.%m.%Y}_{perfil.sufixo}.zip",
                        mime="application/zip", use_container_width=True)
+    plataforma = distribuicao.arquivo_para_plataforma(can, atrib, perfil)
+    b2.download_button("🔁 Divisão para a plataforma (.xlsx)", gerar_excel({"Divisao": plataforma}),
+                       file_name=f"Divisao_{perfil.sufixo}_{data_rota:%d.%m.%Y}.xlsx",
+                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True,
+                       help="ID da OS + coletor. Serve para conferir ou subir em massa na plataforma (o formato exato de importação "
+                            "de cada plataforma pode precisar de ajuste).")
+    if b3.button("💾 Guardar para acompanhamento", use_container_width=True, key="rota_guardar"):
+        try:
+            n = _guardar_fotografia(sb, can, atrib, perfil, data_rota)
+            st.toast(f"Fotografia guardada ({n} OS).", icon="📸")
+        except Exception as erro:
+            st.error(f"{DICA_SQL}\n\nDetalhe: {erro}")
 
     st.markdown("##### Envio")
+    if not para_enviar:
+        st.info("Marque pelo menos um coletor em **Enviar?** para liberar o envio.")
+        return
     gateway = _gateway()
     if gateway is None:
-        _modo_manual(pacotes, perfil, data_rota)
+        _modo_manual(para_enviar, perfil, data_rota)
     else:
         with cartao():
             st.caption(f"🟢 WhatsApp via {gateway.nome}")
-            _enviar(sb, gateway, pacotes, perfil, data_rota)
+            _enviar(sb, gateway, para_enviar, perfil, data_rota,
+                    depois=lambda: _guardar_fotografia(sb, can, atrib, perfil, data_rota))
+
+
+# ================================================================================ ACOMPANHAMENTO
+def _acompanhamento(sb):
+    try:
+        perfis = repo.listar_perfis(sb)
+    except Exception as erro:
+        st.error(f"{DICA_SQL}\n\nDetalhe: {erro}")
+        return
+    st.caption("Compara os relatórios dia a dia: quem tinha quantas OS, quantas saíram da lista (coletadas, canceladas ou "
+               "encerradas na plataforma) e quanto trabalho novo entrou. Guarde a fotografia em **Gerar e enviar**.")
+    empresa = st.selectbox("Empresa", [p.nome for p in perfis], key="acomp_empresa")
+    try:
+        datas = repo.datas_de_snapshot(sb, empresa, 8)
+    except Exception as erro:
+        st.error(f"{DICA_SQL}\n\nDetalhe: {erro}")
+        return
+    if not datas:
+        vazio("Ainda não há fotografias dessa empresa. Em **Gerar e enviar**, clique em “Guardar para acompanhamento”.")
+        return
+    c1, c2 = st.columns(2)
+    atual = c1.selectbox("Dia", datas, format_func=data_br, key="acomp_atual")
+    anteriores = [d for d in datas if d < atual]
+    anterior = c2.selectbox("Comparar com", anteriores, format_func=data_br, key="acomp_ant",
+                            index=0 if anteriores else None, placeholder="(sem dia anterior)")
+    hoje_snap = repo.ler_snapshot(sb, empresa, atual)
+    carga = pd.DataFrame(hoje_snap)
+    if carga.empty:
+        vazio("Fotografia vazia.")
+        return
+    if not anterior:
+        resumo = carga.groupby("coletor").agg(OS=("os_id", "count"), Urgentes=("urgente", "sum")).reset_index().rename(columns={"coletor": "Coletor"})
+        metricas([("📦 OS na lista", len(carga)), ("👷 Coletores", carga["coletor"].nunique())])
+        st.dataframe(resumo.sort_values("OS", ascending=False), hide_index=True, use_container_width=True)
+        st.info("Guarde a fotografia de outro dia para ver a comparação.")
+        return
+    comp = acompanhamento.comparar(repo.ler_snapshot(sb, empresa, anterior), hoje_snap)
+    saiu, entrou = len(comp["saiu"]), len(comp["entrou"])
+    metricas([("📦 Antes", comp["total_antes"]), ("📦 Hoje", comp["total_hoje"]), ("✅ Saíram da lista", saiu),
+              ("🆕 Entraram", entrou), ("📉 % que saiu", f"{round(100 * saiu / max(comp['total_antes'], 1), 1)}%")])
+    st.dataframe(comp["por_coletor"].sort_values("Hoje", ascending=False), hide_index=True, use_container_width=True)
+    baixar_excel("📊 Baixar comparação (.xlsx)", gerar_excel({"Por coletor": comp["por_coletor"], "Saíram": comp["saiu"],
+                                                           "Entraram": comp["entrou"], "Trocaram": comp["trocou"]}),
+                 f"acompanhamento_{empresa}_{atual}.xlsx", chave="acomp_baixar")
+    st.caption("⚠️ “Saíram da lista” é o melhor indicador que a planilha permite, mas não prova coleta: a OS pode ter sido "
+               "cancelada ou encerrada na plataforma.")
+    with st.expander("📈 Produtividade dos últimos dias"):
+        if st.button("Calcular histórico", key="acomp_hist"):
+            por_data = {d: repo.ler_snapshot(sb, empresa, d) for d in datas}
+            st.session_state["acomp_prod"] = acompanhamento.produtividade(por_data)
+        prod = st.session_state.get("acomp_prod")
+        if prod is not None and not prod.empty:
+            st.bar_chart(prod)
+            st.dataframe(prod, use_container_width=True)
+    for titulo, chave_df in (("Saíram da lista", "saiu"), ("Entraram", "entrou"), ("Trocaram de coletor", "trocou")):
+        if len(comp[chave_df]):
+            with st.expander(f"{titulo} ({len(comp[chave_df])})"):
+                st.dataframe(comp[chave_df], hide_index=True, use_container_width=True)
 
 
 # ===================================================================================== COLETORES
@@ -221,6 +431,9 @@ def _novo_coletor(sb, usuarios):
         st.markdown("**➕ Novo coletor**")
         nome = st.text_input("Nome na rota (ex.: GEOVAN)", key=f"rc_nome_{ctr}")
         telefone = st.text_input("WhatsApp (opcional, com DDD)", key=f"rc_tel_{ctr}")
+        tipo = st.selectbox("Tipo", nomes.TIPOS, format_func=nomes.ROTULO_TIPO.get, key=f"rc_tipo_{ctr}",
+                            help="Retentativas: recebe as OS que já foram à rua. Depósito: guarda OS que você não consegue "
+                                 "tirar da plataforma; não recebe rota no WhatsApp.")
         login = st.radio("Login no sistema", ["Sem login", "Vincular a login existente", "Criar login novo"],
                          key=f"rc_login_{ctr}")
         usuario_id, novo = None, {}
@@ -250,7 +463,7 @@ def _novo_coletor(sb, usuarios):
                                                       "nome_completo": novo["nome"].strip(), "cargo": "COLETOR"}).execute().data
                 usuario_id = criado[0]["id"] if criado else None
                 auditoria.registrar(sb, _usuario(), "usuario_criado", f"{novo['login']} (via rotas)")
-            repo.criar_coletor(sb, nome, pr.numero_whatsapp(telefone), usuario_id)
+            repo.criar_coletor(sb, nome, pr.numero_whatsapp(telefone), usuario_id, tipo)
         except ValueError as erro:
             st.error(str(erro))
             return
@@ -271,7 +484,8 @@ def _editar_coletor(sb, lista, usuarios):
         if not lista:
             vazio("Nenhum coletor cadastrado.")
             return
-        st.dataframe([{"Nome na rota": c["nome_rota"], "Login": rotulo_login(c.get("usuario_id")),
+        st.dataframe([{"Nome na rota": c["nome_rota"], "Tipo": nomes.ROTULO_TIPO.get(c.get("tipo") or "normal", "—"),
+                       "Login": rotulo_login(c.get("usuario_id")),
                        "WhatsApp": c.get("telefone") or "—", "Situação": "🟢 Ativo" if c["ativo"] else "🔴 Inativo"}
                       for c in lista], hide_index=True, use_container_width=True)
         rotulos = {c["id"]: c["nome_rota"] for c in lista}
@@ -284,22 +498,58 @@ def _editar_coletor(sb, lista, usuarios):
             atual = c.get("usuario_id") if c.get("usuario_id") in logins else None
             login = st.selectbox("Login vinculado", logins, index=logins.index(atual), key=f"rce_lg_{escolhido}",
                                  format_func=lambda uid: "(nenhum)" if uid is None else rotulo_login(uid))
+            tipo_atual = c.get("tipo") or "normal"
+            tipo = st.selectbox("Tipo", nomes.TIPOS, index=nomes.TIPOS.index(tipo_atual) if tipo_atual in nomes.TIPOS else 0,
+                                format_func=nomes.ROTULO_TIPO.get, key=f"rce_tipo_{escolhido}")
             ativo = st.checkbox("Ativo (aparece na hora de gerar rotas)", value=c["ativo"], key=f"rce_at_{escolhido}")
             if st.button("💾 Salvar alterações", key=f"rce_ok_{escolhido}"):
-                repo.atualizar_coletor(sb, escolhido, telefone=pr.numero_whatsapp(telefone), usuario_id=login, ativo=ativo)
+                campos = {"telefone": pr.numero_whatsapp(telefone), "usuario_id": login, "ativo": ativo}
+                if tipo != tipo_atual:
+                    campos["tipo"] = tipo
+                try:
+                    repo.atualizar_coletor(sb, escolhido, **campos)
+                except Exception as erro:
+                    st.error(f"Não consegui salvar (rodou o `migracao_v4.sql`?): {erro}")
+                    return
                 st.toast("Coletor atualizado.", icon="✅")
                 st.rerun()
         sugestoes = vinculos.sugerir_vinculos(lista, usuarios)
         if sugestoes:
             with st.expander(f"🪄 {len(sugestoes)} vínculo(s) sugerido(s) com logins que já existem"):
-                nomes = {c["id"]: c["nome_rota"] for c in lista}
-                st.dataframe([{"Coletor de rota": nomes[cid], "Login sugerido": rotulo_login(uid), "Semelhança": f"{int(n * 100)}%"}
+                por_id_rota = {c["id"]: c["nome_rota"] for c in lista}
+                st.dataframe([{"Coletor de rota": por_id_rota[cid], "Login sugerido": rotulo_login(uid), "Semelhança": f"{int(n * 100)}%"}
                               for cid, uid, n in sugestoes], hide_index=True, use_container_width=True)
                 if st.button("Aplicar todas as sugestões", key="rc_aplicar_sug"):
                     for cid, uid, _ in sugestoes:
                         repo.atualizar_coletor(sb, cid, usuario_id=uid)
                     st.toast("Vínculos aplicados.", icon="🔗")
                     st.rerun()
+
+
+def _apelidos(sb, lista):
+    """Nomes como aparecem nos relatórios das plataformas -> coletor da rota (o sistema também aprende na hora de gerar)."""
+    with st.expander("🔤 Apelidos: como o nome aparece nos relatórios"):
+        st.caption("O sistema já reconhece pelo primeiro nome (ex.: “GUILHERME SANTOS ARAUJO” → GUILHERME). Cadastre aqui só os "
+                   "casos especiais, como um nome escrito diferente ou uma pessoa com dois nomes.")
+        apelidos = repo.listar_apelidos(sb)
+        for ap, rota in sorted(apelidos.items()):
+            a, b = st.columns([5, 1])
+            a.write(f"`{ap}` → **{rota}**")
+            if b.button("Remover", key=f"ap_rm_{ap}"):
+                repo.remover_apelido(sb, ap)
+                st.rerun()
+        c1, c2, c3 = st.columns([3, 2, 1])
+        novo = c1.text_input("Nome no relatório", key="ap_novo", placeholder="Ex.: Arleide Santos da Siva")
+        rota = c2.selectbox("Coletor da rota", [c["nome_rota"] for c in lista], index=None, placeholder="Escolha...", key="ap_rota")
+        if c3.button("Salvar", key="ap_salvar", use_container_width=True):
+            if novo.strip() and rota:
+                try:
+                    repo.salvar_apelido(sb, nomes.normalizar_nome(novo), rota)
+                    st.rerun()
+                except Exception as erro:
+                    st.error(f"Não consegui salvar (rodou o `migracao_v4.sql`?): {erro}")
+            else:
+                st.error("Informe o nome e escolha o coletor.")
 
 
 def _coletores(sb):
@@ -314,6 +564,7 @@ def _coletores(sb):
         _novo_coletor(sb, usuarios)
     with direita:
         _editar_coletor(sb, lista, usuarios)
+    _apelidos(sb, lista)
 
 
 # ============================================================================ EMPRESAS E GRUPOS
@@ -382,6 +633,15 @@ def _nova_empresa(sb):
             sugestao = next((padrao[k] for k in padrao if k == rotulo.split(" / ")[0].lower() or k == campo), "(não tem)")
             escolha = cols[i % 3].selectbox(rotulo, opcoes, index=opcoes.index(sugestao), key=f"rp_{campo}")
             mapa[campo] = None if escolha == "(não tem)" else escolha
+        extras = {}
+        with st.expander("➕ Colunas extras (opcional): coletor, agenda, prioridade, último motivo..."):
+            st.caption("Servem para avisos e para separar por coletor. Se a planilha não tiver, deixe “(não tem)”.")
+            cx = st.columns(3)
+            achadas = {c.lower(): c for c in colunas}
+            for i, (campo, rotulo) in enumerate(pf.EXTRAS.items()):
+                esc = cx[i % 3].selectbox(rotulo, opcoes, index=opcoes.index(achadas.get(rotulo.split(" / ")[0].lower(), "(não tem)")),
+                                          key=f"rpx_{campo}")
+                extras[campo] = None if esc == "(não tem)" else esc
         if st.button("💾 Salvar empresa", type="primary", key="rp_salvar"):
             if not nome.strip():
                 st.error("Informe o nome da empresa.")
@@ -389,7 +649,7 @@ def _nova_empresa(sb):
                 st.error("Escolha pelo menos as colunas de nome do cliente e endereço.")
             else:
                 try:
-                    repo.salvar_perfil(sb, pf.perfil_a_partir_do_mapa(nome, sufixo, mapa))
+                    repo.salvar_perfil(sb, pf.perfil_a_partir_do_mapa(nome, sufixo, mapa, extras))
                     st.toast("Empresa cadastrada.", icon="✅")
                     st.rerun()
                 except Exception as erro:
@@ -430,5 +690,5 @@ def _historico(sb):
 def render(sb):
     cabecalho("🚚 Rotas", "Suba a planilha da operadora; o sistema confere, divide entre os coletores e manda no WhatsApp.")
     secao = navegacao(SECOES, "nav_rotas")
-    {"🚚 Gerar e enviar": _gerar, "👷 Coletores": _coletores, "🏢 Empresas e grupos": _empresas,
-     "📜 Histórico": _historico}[secao](sb)
+    {"🚚 Gerar e enviar": _gerar, "📊 Acompanhamento": _acompanhamento, "👷 Coletores": _coletores,
+     "🏢 Empresas e grupos": _empresas, "📜 Histórico": _historico}[secao](sb)

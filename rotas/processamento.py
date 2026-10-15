@@ -1,12 +1,37 @@
 """Transforma a planilha da operadora em rota: limpa, confere, ordena e divide entre coletores. Tudo puro (pandas)."""
 import re
+import unicodedata
 import urllib.parse
 
 import pandas as pd
 
-from .perfis import CAMPOS
+from .perfis import CAMPOS, EXTRAS
 
 SEM_COLETOR = "(sem coletor)"
+BAIRROS_GENERICOS = {"", "BAIRRO", "CENTRO NAO INFORMADO", "NAO INFORMADO", "N A", "NA"}
+
+
+def chave_texto(valor):
+    """MAIÚSCULAS sem acento e sem espaços repetidos: 'São  Paulo' e 'SAO PAULO' viram a mesma chave."""
+    sem = unicodedata.normalize("NFKD", str(valor or "")).encode("ascii", "ignore").decode()
+    return re.sub(r"\s+", " ", sem.upper()).strip()
+
+
+def data_da_planilha(valor):
+    """'14/10/2026' ou '14/10/2026 00:00:00' -> date (None se vazio/inválido)."""
+    m = re.match(r"\s*(\d{1,2})/(\d{1,2})/(\d{4})", str(valor or ""))
+    if not m:
+        return None
+    try:
+        from datetime import date
+        return date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+    except ValueError:
+        return None
+
+
+def inteiro(valor, padrao=0):
+    m = re.search(r"-?\d+", str(valor or ""))
+    return int(m.group()) if m else padrao
 
 
 def limpar(valor):
@@ -66,8 +91,29 @@ def aplicar_perfil(df, perfil):
     can["cep"], can["cep_ok"] = cep.map(lambda x: x[0]), cep.map(lambda x: x[1])
     can["mapa"] = [link_mapa(e, b, c, u, p) for e, b, c, u, p in
                    zip(can["endereco_completo"], can["bairro"], can["cidade"], can["uf"], can["cep"])]
+    for campo in EXTRAS:  # campos extras: opcionais; coluna ausente = vazio, nunca é erro
+        origem = perfil.extras.get(campo)
+        coluna = colunas.get(str(origem).strip().lower()) if origem else None
+        can[campo] = df[coluna].map(limpar) if coluna is not None else ""
+    can["agenda_dt"] = can["agenda"].map(data_da_planilha)
+    can["tentativas_n"] = can["tentativas"].map(inteiro)
+    can["backlog_n"] = can["backlog"].map(inteiro)
+    can["bairro_ef"] = bairro_efetivo(can)
     vazias = (can["id"] == "") & (can["nome"] == "") & (can["endereco"] == "")
     return can[~vazias], faltando
+
+
+def bairro_efetivo(can):
+    """Bairro para agrupar. Se o campo está vazio ou traz o nome da cidade/'bairro' (dado sujo), usa o prefixo do CEP."""
+    saida = []
+    for b, c, cep in zip(can["bairro"], can["cidade"], can["cep"]):
+        kb, kc = chave_texto(b), chave_texto(c)
+        if kb in BAIRROS_GENERICOS or kb == kc:
+            digitos = re.sub(r"\D", "", cep or "")
+            saida.append(f"CEP {digitos[:5]}" if len(digitos) >= 5 else "SEM BAIRRO")
+        else:
+            saida.append(kb)
+    return pd.Series(saida, index=can.index, dtype=object)
 
 
 def checar_qualidade(can):
@@ -86,6 +132,8 @@ def checar_qualidade(can):
             add("Sem telefone válido")
         if not r["bairro"]:
             add("Sem bairro")
+        elif r["bairro_ef"].startswith(("CEP ", "SEM ")):
+            add("Bairro genérico (igual à cidade): agrupado pelo CEP", grave=False)
         if r["cep"] and not r["cep_ok"]:
             add("CEP inválido", grave=False)
         if r["id"] in repetidos:
@@ -95,13 +143,15 @@ def checar_qualidade(can):
     return pd.DataFrame(achados, columns=["Linha", "ID", "Cliente", "Problema", "Gravidade"])
 
 
-def ordenar_rota(can):
-    """Agrupa por cidade/bairro e ordena por CEP, rua e número: a ordem natural de percurso."""
+def ordenar_rota(can, urgentes_primeiro=False):
+    """Agrupa por cidade/bairro e ordena por CEP, rua e número: a ordem natural de percurso.
+    urgentes_primeiro: OS com prioridade máxima / agenda de hoje sobem para o topo (precisa da coluna `urgente`)."""
     def num(v):
         m = re.search(r"\d+", str(v))
         return int(m.group()) if m else 0
-    chave = can.assign(_c=can["cidade"].str.upper(), _b=can["bairro"].str.upper(), _n=can["numero"].map(num))
-    return can.loc[chave.sort_values(["_c", "_b", "cep", "endereco", "_n"]).index]
+    chave = can.assign(_c=can["cidade"].map(chave_texto), _b=can["bairro_ef"], _n=can["numero"].map(num),
+                       _u=(~can["urgente"].astype(bool)).astype(int) if (urgentes_primeiro and "urgente" in can) else 0)
+    return can.loc[chave.sort_values(["_u", "_c", "_b", "cep", "endereco", "_n"]).index]
 
 
 def dividir_entre(can, coletores):
@@ -113,7 +163,7 @@ def dividir_entre(can, coletores):
         return atrib
     cota = -(-len(can) // len(coletores))
     pedacos = []
-    for _, grupo in can.groupby([can["cidade"].str.upper(), can["bairro"].str.upper()], sort=True):
+    for _, grupo in can.groupby([can["cidade"].map(chave_texto), can["bairro_ef"]], sort=True):
         grupo = grupo.sort_values(["cep", "endereco"])
         if len(grupo) > cota * 1.3:
             pedacos += [grupo.iloc[i:i + cota] for i in range(0, len(grupo), cota)]
@@ -127,11 +177,48 @@ def dividir_entre(can, coletores):
     return atrib
 
 
-def montar_saida(can, perfil, incluir_mapa=True):
-    """Planilha final no mesmo formato dos scripts antigos (+ coluna 'Mapa', opcional)."""
+MENSAGEM_WHATS_PADRAO = "Olá, {cliente}, tudo bem? Estou no seu endereço para retirar o equipamento. Pode me atender?"
+
+
+def primeiro_nome(nome):
+    partes = str(nome or "").strip().split()
+    return partes[0].capitalize() if partes else ""
+
+
+def numero_do_celular(telefone):
+    """Dígitos com DDI (55) se for celular brasileiro (11 dígitos, começa com 9 depois do DDD); senão ''.
+    Telefone fixo não tem WhatsApp, então não gera link."""
+    d = re.sub(r"\D", "", str(telefone or ""))
+    if d.startswith("55") and len(d) in (12, 13):
+        d = d[2:]
+    if len(d) == 11 and d[2] == "9" and d[0] != "0":
+        return "55" + d
+    return ""
+
+
+def link_whatsapp(telefone, telefone2="", cliente="", coletor="", modelo=None):
+    """https://wa.me/55DDDNUMERO?text=... usando o primeiro celular válido (telefone, depois telefone2). '' se não houver."""
+    numero = numero_do_celular(telefone) or numero_do_celular(telefone2)
+    if not numero:
+        return ""
+    texto = (modelo or MENSAGEM_WHATS_PADRAO).replace("{cliente}", primeiro_nome(cliente)).replace("{coletor}", str(coletor or ""))
+    texto = re.sub(r"\s{2,}", " ", texto)
+    texto = re.sub(r"\s+([,!?.])", r"\1", texto)      # cliente sem nome: "Olá, , tudo bem?" vira "Olá, tudo bem?"
+    texto = re.sub(r",(?=[,!?.])", "", texto).strip()
+    return f"https://wa.me/{numero}?text=" + urllib.parse.quote(texto)
+
+
+def montar_saida(can, perfil, incluir_mapa=True, incluir_avisos=False, incluir_whats=False, modelo_whats=None, coletor=""):
+    """Planilha final no mesmo formato dos scripts antigos (+ colunas opcionais no fim: Mapa, WhatsApp, Avisos).
+    A coluna WhatsApp é um link direto para a conversa com o cliente, com a mensagem já escrita."""
     saida = pd.DataFrame({cab: can[campo] for cab, campo in perfil.saida})
     if incluir_mapa:
         saida["Mapa"] = can["mapa"]
+    if incluir_whats:
+        saida["WhatsApp"] = [link_whatsapp(t1, t2, nome, coletor, modelo_whats)
+                             for t1, t2, nome in zip(can["telefone"], can["telefone2"], can["nome"])]
+    if incluir_avisos and "avisos" in can:
+        saida["Avisos"] = can["avisos"]
     return saida.reset_index(drop=True)
 
 

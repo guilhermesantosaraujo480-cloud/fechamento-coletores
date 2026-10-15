@@ -24,8 +24,10 @@ def neutralizar_formulas(df):
     return out
 
 
-def gerar_excel(abas):
-    """abas: {'Nome da aba': DataFrame}. Devolve os bytes do .xlsx."""
+def gerar_excel(abas, links=("Mapa", "WhatsApp")):
+    """abas: {'Nome da aba': DataFrame}. Devolve os bytes do .xlsx.
+    Colunas em `links` com endereços http(s) ficam clicáveis; o texto da célula continua sendo o próprio endereço
+    (assim um roteirizador que importe a planilha lê o link normalmente)."""
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as escritor:
         for nome, df in abas.items():
@@ -33,6 +35,11 @@ def gerar_excel(abas):
             neutralizar_formulas(df).to_excel(escritor, index=False, sheet_name=nome)
             ws = escritor.sheets[nome]
             ws.freeze_panes = "A2"
+            for coluna in ws.columns:
+                if str(coluna[0].value) in links:
+                    for c in coluna[1:]:
+                        if isinstance(c.value, str) and c.value.startswith(("http://", "https://")):
+                            c.hyperlink = c.value
             for coluna in ws.columns:
                 maior = max((len(str(c.value)) for c in coluna if c.value is not None), default=8)
                 ws.column_dimensions[coluna[0].column_letter].width = min(max(10, maior + 2), 60)

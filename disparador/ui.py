@@ -5,20 +5,21 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
+from core import auditoria, sessao
 from core.config import cfg
 from core.consulta import buscar_todos, contar
 from core.exportacao import gerar_excel
 from core.utils import agora_br, serie_utc_para_br
 from ui.componentes import baixar_excel, cabecalho, cartao, erro_banco, metricas, navegacao, vazio
 
-from . import campanha, colunas, ia, planilha, templates
+from . import campanha, colunas, fila, gatilho, ia, planilha, templates
 from . import metricas as met
 from . import repositorio as repo
 from .crypto import Cofre
 from .envio_smtp import GerenteSMTP
 from .utils import email_valido, separar_emails
 
-SECOES = ["🚀 Disparos", "✉️ Modelos", "🔑 Contas", "🚫 Descadastros", "📜 Histórico", "📈 Cliques"]
+SECOES = ["🚀 Disparos", "⏱️ Fila", "✉️ Modelos", "🔑 Contas", "🚫 Descadastros", "📜 Histórico", "📈 Cliques"]
 
 
 def _cofre():
@@ -227,12 +228,109 @@ def _pagina_disparo(sb):
     # ---- 5. disparo
     st.markdown("#### 5 · Disparar")
     revisado = st.checkbox(f"✅ Revisei a prévia, recebi o teste e quero enviar para {rel.enviaveis} pessoa(s)")
+    modo = st.radio("Como enviar", ["⏱️ Em segundo plano (recomendado)", "▶️ Agora, nesta tela"], horizontal=True, key="modo_disparo")
+    if modo.startswith("⏱️"):
+        st.caption("Vai para a fila e é enviado por um trabalhador no servidor: você pode **fechar a página e mexer em "
+                   "qualquer outra coisa**. Acompanhe, pause ou cancele na seção **⏱️ Fila**.")
+        nome_campanha = st.text_input("Nome da campanha", value=f"{nome_modelo} · {agora_br():%d/%m %H:%M}", key="nome_campanha")
+        if st.button("📥 Colocar na fila", type="primary", use_container_width=True, disabled=not (revisado and rel.enviaveis)):
+            _enfileirar(sb, df, mapa, params, nome_campanha)
+        return
     b1, b2 = st.columns([3, 1])
     if b2.button("🛑 PARAR", use_container_width=True):
         st.session_state["parar_disparo"] = True
     if b1.button("🚀 Iniciar disparos", type="primary", use_container_width=True, disabled=not (revisado and rel.enviaveis)):
         st.session_state["parar_disparo"] = False
         _executar(sb, df, mapa, contas, enviados_hoje, params)
+
+
+def _acordar_trabalhador():
+    """Chama o GitHub Actions na hora (se configurado). Devolve texto para mostrar."""
+    if not gatilho.configurado(cfg):
+        return ("⏳ O trabalhador roda sozinho a cada 30 minutos. Para começar na hora, configure `GITHUB_REPO` e "
+                "`GITHUB_TOKEN_DISPARO` nos secrets (veja o README).")
+    try:
+        gatilho.disparar_pela_tela(cfg)
+        return "🚀 Trabalhador acionado: o envio começa em instantes."
+    except gatilho.ErroGatilho as erro:
+        return f"⚠️ Não consegui acionar na hora ({erro}). Ele roda sozinho no próximo ciclo (até 30 min)."
+
+
+def _enfileirar(sb, df, mapa, params, nome):
+    registros = [colunas.registro_da_linha(linha, mapa) for _, linha in df.iterrows()]
+    usuario = sessao.usuario_atual()["usuario"]
+    try:
+        camp = fila.criar_campanha(sb, usuario, nome, params.nome_modelo, params.modelo, params.ctx,
+                                   params.delay_min, params.delay_max, params.permitir_reenvio, registros)
+    except Exception as erro:
+        st.error(f"Não foi possível criar a fila (rodou o `migracao_v4.sql`?): {erro}")
+        return
+    auditoria.registrar(sb, usuario, "campanha_na_fila", f"#{camp['id']} {camp['nome']} ({len(registros)} linhas)")
+    st.success(f"✅ Campanha **#{camp['id']}** na fila com {len(registros)} linha(s).")
+    st.info(_acordar_trabalhador())
+    st.caption("Abra a seção **⏱️ Fila** para acompanhar.")
+
+
+# =============================================================================== FILA
+def _cartao_campanha(sb, c):
+    feitos = c["enviados"] + c["erros"] + c["ignorados"]
+    restam = max(c["total"] - feitos, 0)
+    ativo = c["status"] in fila.STATUS_ATIVOS
+    with st.expander(f"{fila.ROTULO.get(c['status'], c['status'])} · #{c['id']} · {c['nome']}", expanded=ativo or c["status"] == "pausada"):
+        st.progress(min(feitos / max(c["total"], 1), 1.0))
+        metricas([("✅ Enviados", c["enviados"]), ("❌ Erros", c["erros"]), ("⏭️ Pulados", c["ignorados"]),
+                  ("⏳ Faltam", restam, f"≈ {fila.tempo_restante_min(c, restam)} min de intervalo" if ativo and restam else None)])
+        if c.get("motivo"):
+            st.warning(c["motivo"])
+        if c.get("aviso"):
+            st.warning(c["aviso"])
+        if c.get("falhas_log"):
+            st.warning(f"{c['falhas_log']} envio(s) não foram gravados no histórico; esses clientes podem receber de novo.")
+        st.caption(f"Modelo: {c.get('modelo_nome') or '—'} · criada por {c.get('criado_por') or '—'} · "
+                   f"atualizada {serie_utc_para_br(pd.Series([c.get('atualizado_em') or c.get('criado_em')])).iloc[0]}")
+        b = st.columns(4)
+        if c["status"] in fila.STATUS_ATIVOS and b[0].button("⏸️ Pausar", key=f"fp_{c['id']}"):
+            fila.pausar(sb, c["id"])
+            st.rerun()
+        if c["status"] == "pausada" and b[0].button("▶️ Retomar", key=f"fr_{c['id']}", type="primary"):
+            fila.retomar(sb, c["id"])
+            st.info(_acordar_trabalhador())
+        if c["status"] in fila.STATUS_ATIVOS + ("pausada",) and b[1].button("🛑 Cancelar", key=f"fc_{c['id']}"):
+            fila.cancelar(sb, c["id"])
+            st.rerun()
+        if c["erros"] and c["status"] != "cancelada" and b[2].button("↻ Reenviar os erros", key=f"fe_{c['id']}"):
+            n = fila.recolocar_erros(sb, c["id"])
+            st.info(f"{n} e-mail(s) voltaram para a fila. " + _acordar_trabalhador())
+        if b[3].button("📊 Preparar relatório", key=f"fx_{c['id']}"):
+            linhas = fila.destinos(sb, c["id"])
+            df = pd.DataFrame([{"Protocolo": d["protocolo"], "E-mail": d["email"], "Situação": d["status"],
+                                "Detalhe": d["detalhe"], "Processado em": d["processado_em"]} for d in linhas])
+            st.session_state[f"rel_fila_{c['id']}"] = gerar_excel({"Campanha": df})
+        if st.session_state.get(f"rel_fila_{c['id']}"):
+            baixar_excel("⬇️ Baixar relatório", st.session_state[f"rel_fila_{c['id']}"], f"campanha_{c['id']}.xlsx",
+                         chave=f"dl_fila_{c['id']}")
+
+
+def _pagina_fila(sb):
+    st.caption("Campanhas enviadas em segundo plano. O trabalhador (GitHub Actions) respeita o intervalo e o limite "
+               "diário de cada conta; se o limite acabar, continua sozinho no dia seguinte.")
+    c1, c2 = st.columns([1, 1])
+    c1.button("🔄 Atualizar", use_container_width=True)
+    if c2.button("🚀 Acionar trabalhador agora", use_container_width=True):
+        st.info(_acordar_trabalhador())
+    try:
+        campanhas = fila.listar(sb)
+    except Exception as erro:
+        st.error(f"Não foi possível ler a fila (rodou o `migracao_v4.sql`?): {erro}")
+        return
+    if not campanhas:
+        vazio("Nenhuma campanha na fila. Em **🚀 Disparos**, escolha “Em segundo plano”.")
+        return
+    ativas = [c for c in campanhas if c["status"] in fila.STATUS_ATIVOS]
+    if ativas and all(not c.get("iniciado_em") for c in ativas):
+        st.info("⏳ Aguardando o trabalhador começar (até 30 min, ou na hora se `GITHUB_REPO` estiver configurado).")
+    for c in campanhas:
+        _cartao_campanha(sb, c)
 
 
 # =========================================================================== MODELOS
@@ -458,6 +556,6 @@ def _pagina_cliques(sb):
 def renderizar_disparador(sb):
     cabecalho("📧 Disparador de e-mails")
     secao = navegacao(SECOES, "nav_email")
-    {"🚀 Disparos": _pagina_disparo, "✉️ Modelos": _pagina_modelos, "🔑 Contas": _pagina_contas,
+    {"🚀 Disparos": _pagina_disparo, "⏱️ Fila": _pagina_fila, "✉️ Modelos": _pagina_modelos, "🔑 Contas": _pagina_contas,
      "🚫 Descadastros": _pagina_descadastros, "📜 Histórico": _pagina_historico,
      "📈 Cliques": _pagina_cliques}[secao](sb)

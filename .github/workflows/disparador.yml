@@ -1,0 +1,57 @@
+# Trabalhador do disparo de e-mails em segundo plano.
+# Roda a cada 30 min (e na hora, quando o app aciona). Se não há nada na fila, termina em segundos.
+name: Disparador em segundo plano
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+# Nunca dois trabalhadores ao mesmo tempo (evita e-mail duplicado)
+concurrency:
+  group: disparador
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: write   # permite o trabalhador chamar o próprio ciclo seguinte
+
+jobs:
+  enviar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Tem campanha na fila?
+        id: checar
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          resp=$(curl -s --max-time 20 "$SUPABASE_URL/rest/v1/campanhas?select=id&status=in.(pendente,rodando)&limit=1" \
+            -H "apikey: $SUPABASE_KEY" -H "Authorization: Bearer $SUPABASE_KEY" || echo "erro")
+          echo "resposta: ${resp:0:120}"
+          if [ "$resp" = "[]" ]; then echo "trabalho=nao" >> "$GITHUB_OUTPUT"; else echo "trabalho=sim" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: actions/checkout@v4
+        if: steps.checar.outputs.trabalho == 'sim'
+
+      - uses: actions/setup-python@v5
+        if: steps.checar.outputs.trabalho == 'sim'
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-worker.txt
+
+      - name: Instalar dependências
+        if: steps.checar.outputs.trabalho == 'sim'
+        run: pip install -r requirements-worker.txt
+
+      - name: Enviar a fila
+        if: steps.checar.outputs.trabalho == 'sim'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          CHAVE_CRIPTO: ${{ secrets.CHAVE_CRIPTO }}
+          MAX_MINUTOS: "14"
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python -m disparador.worker
