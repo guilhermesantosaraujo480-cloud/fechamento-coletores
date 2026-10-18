@@ -1,0 +1,8 @@
+# Nunca suba segredos para o GitHub
+.streamlit/secrets.toml
+secrets.toml
+__pycache__/
+*.pyc
+.env
+
+bipagem_logs/
