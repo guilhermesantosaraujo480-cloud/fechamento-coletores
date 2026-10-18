@@ -11,7 +11,7 @@ from datetime import timedelta
 from .utils import brl, data_br, limites_quinzena
 
 STATUS = ("Pendente", "Aprovado", "Recusado")
-COLS_COLETAS = ["id", "data", "coletor", "quantidade", "foto_url", "status", "valor_total", "pago"]
+COLS_COLETAS = ["id", "data", "coletor", "quantidade", "foto_url", "status", "valor_total", "pago", "qtd_acrescimo"]
 COLS_VALES = ["id", "data", "coletor", "valor_vale", "descricao", "foto_url"]
 COLS_PREMIOS = ["id", "data", "coletor", "valor_premiacao", "descricao"]
 
@@ -35,7 +35,7 @@ def _preparar(linhas, colunas, numericas=(), inteiras=(), booleanas=(), textos=(
 
 
 def df_coletas(linhas):
-    return _preparar(linhas, COLS_COLETAS, numericas=["valor_total"], inteiras=["quantidade"],
+    return _preparar(linhas, COLS_COLETAS, numericas=["valor_total"], inteiras=["quantidade", "qtd_acrescimo"],
                      booleanas=["pago"], textos=["coletor", "status"])
 
 
@@ -94,6 +94,54 @@ def calcular_fechamento(coletas, vales, premios):
         nao_pago=int(_centavos(nao_pagas["valor_total"]).sum()) if not nao_pagas.empty else 0,
         pendentes=int((coletas["status"] == "Pendente").sum()) if not coletas.empty else 0,
     )
+
+
+# ------------------------------------------- aparelhos acrescentados (controle interno do admin)
+# `quantidade` e `valor_total` já incluem o acréscimo, então fechamento/saldo/pagamento não mudam.
+# `qtd_acrescimo` só serve para o administrador enxergar quantos aparelhos foram acrescentados.
+def _aprovadas(coletas):
+    return coletas[coletas["status"] == "Aprovado"] if not coletas.empty else coletas
+
+
+def acrescimos(coletas):
+    """Total de aparelhos acrescentados nas coletas aprovadas."""
+    aprov = _aprovadas(coletas)
+    return int(aprov["qtd_acrescimo"].sum()) if not aprov.empty else 0
+
+
+def acrescimos_por_coletor(coletas):
+    """Uma linha por coletor que recebeu acréscimo: Coletor, Acrescentados, Aparelhos (total) e % do total."""
+    aprov = _aprovadas(coletas)
+    if aprov.empty:
+        return pd.DataFrame(columns=["Coletor", "Acrescentados", "Aparelhos", "% do total"])
+    g = aprov.groupby("coletor").agg(Acrescentados=("qtd_acrescimo", "sum"), Aparelhos=("quantidade", "sum")).reset_index()
+    g = g[g["Acrescentados"] > 0].rename(columns={"coletor": "Coletor"})
+    g["% do total"] = (g["Acrescentados"] / g["Aparelhos"].where(g["Aparelhos"] > 0, 1) * 100).round(1)
+    return g.sort_values("Acrescentados", ascending=False).reset_index(drop=True)
+
+
+def acrescimos_por_quinzena(coletas):
+    """Uma linha por quinzena (mais recente primeiro): Quinzena, Acrescentados, Aparelhos e % do total."""
+    aprov = _aprovadas(coletas)
+    if aprov.empty:
+        return pd.DataFrame(columns=["Quinzena", "Acrescentados", "Aparelhos", "% do total"])
+    linhas = {}
+    for data, qtd, acr in zip(aprov["data"], aprov["quantidade"], aprov["qtd_acrescimo"]):
+        try:
+            dia = pd.Timestamp(str(data)[:10]).date()
+        except (ValueError, TypeError):
+            continue
+        qi, qf = limites_quinzena(dia)
+        item = linhas.setdefault(qi, {"fim": qf, "acr": 0, "qtd": 0})
+        item["acr"] += int(acr)
+        item["qtd"] += int(qtd)
+    saida = []
+    for qi in sorted(linhas, reverse=True):
+        i = linhas[qi]
+        saida.append({"Quinzena": f"{qi.strftime('%d/%m')} a {i['fim'].strftime('%d/%m/%Y')}",
+                      "Acrescentados": i["acr"], "Aparelhos": i["qtd"],
+                      "% do total": round(i["acr"] / i["qtd"] * 100, 1) if i["qtd"] else 0.0})
+    return pd.DataFrame(saida, columns=["Quinzena", "Acrescentados", "Aparelhos", "% do total"])
 
 
 def quinzenas_antes(ini, quantas=12):

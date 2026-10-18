@@ -8,3 +8,4 @@ bcrypt
 cryptography
 requests
 xlrd
+pypdf

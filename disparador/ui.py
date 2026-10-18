@@ -78,10 +78,18 @@ def _modelos_disponiveis(sb):
         "[Padrão 2] Comunicado de rota técnica": {"tipo": "padrao2"},
     }
     try:
-        for m in repo.listar_modelos(sb, somente_ativos=True):
-            opcoes[f"[Salvo] {m['nome']}"] = {"tipo": "db", **m}
-    except Exception:
-        st.caption("ℹ️ Modelos salvos indisponíveis (rode o `migracao.sql`).")
+        todos = repo.listar_modelos(sb)
+        for m in todos:
+            if m.get("ativo") is not False:
+                opcoes[f"[Salvo] {m['nome']}"] = {"tipo": "db", **m}
+        desativados = [m for m in todos if m.get("ativo") is False]
+        if desativados:
+            st.caption(f"ℹ️ {len(desativados)} modelo(s) salvo(s) estão desativados e não aparecem aqui "
+                       "(ative em ✉️ Modelos).")
+        elif not todos:
+            st.caption("ℹ️ Nenhum modelo salvo encontrado na tabela `modelos_email` (veja a seção ✉️ Modelos).")
+    except Exception as erro:
+        st.caption(f"ℹ️ Modelos salvos indisponíveis: {erro}")
     return opcoes
 
 
