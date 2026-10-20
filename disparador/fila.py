@@ -3,6 +3,8 @@ from datetime import datetime, timedelta, timezone
 
 from core.consulta import buscar_todos
 
+from . import variacoes
+
 LOTE_INSERCAO = 500
 STATUS_ATIVOS = ("pendente", "rodando")
 ROTULO = {"pendente": "⏳ Na fila", "rodando": "🟢 Enviando", "pausada": "⏸️ Pausada", "concluida": "✅ Concluída",
@@ -35,12 +37,15 @@ def criar_campanha(sb, usuario, nome, modelo_nome, modelo, ctx, delay_min, delay
     }).execute().data[0]
     _completar(camp)
     vistos, linhas = set(), []
+    # campanha com vários modelos: cada linha já nasce com o modelo sorteado (fica em dados["_variante"])
+    sorteio = variacoes.atribuir(len(registros), variacoes.da_campanha(modelo, modelo_nome)) if variacoes.e_multi(modelo) else None
     for ordem, reg in enumerate(registros):
         chave = f"{reg.get('protocolo', '')}|{reg.get('email', '')}"
         repetido = chave in vistos
         vistos.add(chave)
         linhas.append({"campanha_id": camp["id"], "ordem": ordem, "protocolo": reg.get("protocolo", ""),
-                       "email": reg.get("email", ""), "dados": reg,
+                       "email": reg.get("email", ""),
+                       "dados": {**reg, "_variante": sorteio[ordem]} if sorteio else reg,
                        "status": "ignorado" if repetido else "pendente",
                        "detalhe": "IGNORADO: duplicado na planilha" if repetido else ""})
     for i in range(0, len(linhas), LOTE_INSERCAO):
@@ -173,3 +178,17 @@ def concluir_destino(sb, destino_id, status, detalhe):
 def em_andamento(sb, camp_id):
     """Destinos que ficaram 'enviando' (o trabalhador caiu no meio)."""
     return sb.table("campanha_destinos").select("*").eq("campanha_id", camp_id).eq("status", "enviando").execute().data or []
+
+
+def resumo_por_variante(linhas, variantes):
+    """Andamento por modelo numa campanha mista. linhas: saída de `destinos`; variantes: variacoes.da_campanha."""
+    n = len(variantes)
+    base = [{"Modelo": v["rotulo"], "Peso": v["peso"], "Total": 0, "Enviados": 0, "Erros": 0, "Faltam": 0, "Pulados": 0}
+            for v in variantes]
+    for d in linhas:
+        i = variacoes.indice_da_linha([(d.get("dados") or {}).get("_variante")], 0, n) if n else 0
+        item = base[i]
+        item["Total"] += 1
+        chave = {"enviado": "Enviados", "erro": "Erros", "ignorado": "Pulados"}.get(d.get("status"), "Faltam")
+        item[chave] += 1
+    return base

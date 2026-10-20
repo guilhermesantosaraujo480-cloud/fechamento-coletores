@@ -416,3 +416,73 @@ class TestRotasPlataforma(Base):
         self.assertFalse([a for a in ST.avisos if a[0] == "error"], ST.avisos)
         novo = next(c for c in sb.tabelas["rota_coletores"] if c["nome_rota"] == "NOVO")
         self.assertEqual(novo["tipo"], "deposito")
+
+
+class TestDisparoMisto(Base):
+    """Tela de disparo completa com planilha, modo 'variar entre vários modelos', teste das variações e fila."""
+
+    def arquivo(self, n=30):
+        import io
+
+        class Arq(io.BytesIO):
+            name = "clientes.csv"
+
+            @property
+            def size(self):
+                return len(self.getvalue())
+        linhas = "protocolo,nome,email\n" + "\n".join(f"P{i},Cliente {i},c{i}@ex.com" for i in range(n))
+        return Arq(linhas.encode("utf-8"))
+
+    def preparar(self):
+        from disparador import ui
+        ST.secrets.update({"WHATSAPP_NUMERO": "5511999999999"})
+        ST.respostas.update({"nav_email": "🚀 Disparos", "modo_modelos": "🔀 Variar entre vários modelos",
+                             "📂 1 · Planilha de clientes (.xlsx, .xls, .csv ou .txt)": self.arquivo(),
+                             "modo_disparo": "⏱️ Em segundo plano (recomendado)"})
+        return ui
+
+    def test_mistura_dos_seis_modelos_vai_para_a_fila(self):
+        from disparador import fila, variacoes
+        ui = self.preparar()
+        sb = banco()
+        revisado = "✅ Revisei a prévia, recebi o teste e quero enviar para 30 pessoa(s)"
+        ST.respostas[revisado] = True
+        ST.respostas["📥 Colocar na fila"] = True
+        ui.renderizar_disparador(sb)
+        self.assertFalse([a for a in ST.avisos if a[0] == "error"], ST.avisos)
+        camps = fila.listar(sb)
+        self.assertEqual(len(camps), 1)
+        self.assertTrue(variacoes.e_multi(camps[0]["modelo"]))
+        self.assertEqual(len(camps[0]["modelo"]["variantes"]), 6)
+        ds = fila.destinos(sb, camps[0]["id"])
+        self.assertEqual({d["dados"]["_variante"] for d in ds}, set(range(6)))
+
+    def test_envia_teste_de_todas_as_variacoes(self):
+        from disparador import ui
+        enviados = []
+
+        class Gerente:
+            def enviar(self, conta, msg):
+                enviados.append(msg["Subject"])
+
+            def fechar(self):
+                pass
+        original = ui.GerenteSMTP
+        ui.GerenteSMTP = Gerente
+        try:
+            self.preparar()
+            ST.respostas.update({"email_teste": "eu@ex.com", "teste_todas": True})
+            ui.renderizar_disparador(banco())
+        finally:
+            ui.GerenteSMTP = original
+        self.assertFalse([a for a in ST.avisos if a[0] == "error"], ST.avisos)
+        self.assertEqual(len(enviados), 6)
+        self.assertTrue(all(a.startswith("[TESTE ") for a in enviados))
+
+    def test_cliques_mostra_desempenho_por_modelo_mesmo_sem_cliques(self):
+        from disparador import ui
+        sb = banco()
+        sb.tabelas["cliques_email"] = []
+        ST.respostas["nav_email"] = "📈 Cliques"
+        ui.renderizar_disparador(sb)
+        self.assertFalse([a for a in ST.avisos if a[0] == "error"], ST.avisos)

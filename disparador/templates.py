@@ -77,6 +77,29 @@ HTML_TEMPLATE = """
 </html>
 """
 
+HTML_SIMPLES = """
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background-color:#ffffff;font-family:Arial,Helvetica,sans-serif;color:#222222;">
+    <div style="max-width:560px;margin:0 auto;padding:24px 20px;font-size:15px;line-height:1.6;">
+        <p style="margin:0 0 14px 0;">Olá, {nome}!</p>
+        <p style="margin:0 0 14px 0;">{texto_dinamico}</p>
+        <p style="margin:0 0 6px 0;"><strong>Endereço cadastrado:</strong></p>
+        <p style="margin:0 0 16px 0;">{endereco_completo_cliente}</p>
+        <p style="margin:0 0 16px 0;">Para confirmar ou corrigir o endereço, fale com a gente pelo WhatsApp:
+            <a href="{whatsapp_link}" target="_blank" style="color:#660099;font-weight:bold;">confirmar endereço</a></p>
+        <p style="margin:0 0 16px 0;font-size:14px;color:#444444;">{regras_coleta}</p>
+        <p style="margin:0;">Atenciosamente,<br><strong>{empresa}</strong></p>
+        <p style="margin:22px 0 0 0;font-size:11px;color:#888888;line-height:1.5;">
+            Enviado por {empresa}. {identificacao}<br>
+            Você recebeu esta mensagem porque há um equipamento pendente de devolução vinculado ao seu cadastro.
+            Para não receber mais mensagens, responda este e-mail com a palavra <strong>SAIR</strong>.</p>
+    </div>
+</body>
+</html>
+"""
+
 
 def conteudo_padrao_1(tipo, protocolo_h, valor_multa):
     if tipo == "voluntario":
@@ -151,7 +174,8 @@ def preparar_dados(reg, modelo, ctx, envio_id):
     else:
         link = link_wa
 
-    corpo_html = HTML_TEMPLATE.format(
+    molde = HTML_SIMPLES if modelo.get("layout") == "simples" else HTML_TEMPLATE
+    corpo_html = molde.format(
         empresa=esc(ctx["empresa"]), nome=esc(nome), texto_dinamico=c["texto_html"],
         endereco_completo_cliente=esc(endereco), regras_coleta=c["regras_html"],
         whatsapp_link=esc(link), identificacao=esc(ctx.get("identificacao", "")),

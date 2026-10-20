@@ -80,3 +80,27 @@ def resumir(cliques_classificados, total_enviados=0):
     taxa = round(100 * envios / total_enviados, 1) if total_enviados else 0.0
     return ResumoCliques(total=len(df), robos=int((df["perfil"] == "Robô").sum()), pessoas=len(pessoas),
                          envios_com_pessoa=int(envios), taxa_pessoas=taxa)
+
+
+def desempenho_por_modelo(envios, cliques_classificados, descadastrados=()):
+    """Tabela por modelo: enviados, erros, cliques de PESSOAS, taxa e descadastros.
+    envios: DataFrame com envio_id, email, modelo, status. cliques_classificados: saída de classificar_cliques."""
+    colunas = ["Modelo", "Enviados", "Erros", "Clicaram (pessoas)", "Taxa de clique", "Descadastros"]
+    if envios is None or envios.empty or "modelo" not in envios.columns:
+        return pd.DataFrame(columns=colunas)
+    df = envios.copy()
+    df["modelo"] = df["modelo"].fillna("(sem nome)").replace("", "(sem nome)")
+    pessoas = set()
+    if cliques_classificados is not None and not cliques_classificados.empty and "envio_id" in cliques_classificados.columns:
+        pessoas = set(cliques_classificados.loc[cliques_classificados["perfil"] == "Pessoa", "envio_id"].dropna())
+    sair = {str(e).lower() for e in descadastrados}
+    linhas = []
+    for modelo, grupo in df.groupby("modelo"):
+        ok = grupo[grupo["status"] == "enviado"]
+        clicaram = int(ok["envio_id"].isin(pessoas).sum()) if "envio_id" in ok.columns else 0
+        saiu = int(ok["email"].astype(str).str.lower().isin(sair).sum()) if "email" in ok.columns else 0
+        linhas.append({"Modelo": modelo, "Enviados": len(ok), "Erros": int((grupo["status"] == "erro").sum()),
+                       "Clicaram (pessoas)": clicaram,
+                       "Taxa de clique": f"{round(100 * clicaram / len(ok), 1)}%" if len(ok) else "—",
+                       "Descadastros": saiu})
+    return pd.DataFrame(linhas, columns=colunas).sort_values("Enviados", ascending=False).reset_index(drop=True)

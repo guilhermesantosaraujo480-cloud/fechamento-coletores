@@ -9,6 +9,7 @@ from core.utils import agora_br
 from .colunas import registro_da_linha
 from .envio_smtp import conta_esgotada, escolher_conta
 from .planilha import Triagem
+from . import variacoes
 from .templates import construir_mensagem, preparar_dados
 
 MAX_ERROS_SEGUIDOS = 5
@@ -35,17 +36,22 @@ class Resumo:
     motivo_parada: str = ""
     resultado: dict = field(default_factory=dict)  # posição -> (status, hora)
     avisos: list = field(default_factory=list)
+    por_variante: dict = field(default_factory=dict)  # rótulo -> {'enviados': n, 'erros': n}
 
 
 def executar_campanha(df, mapa, contas, enviados_hoje, descadastrados, ja_enviados, gerente, params,
                       registrar, progresso=None, parar=lambda: False,
-                      dormir=time.sleep, sortear=random.uniform):
+                      dormir=time.sleep, sortear=random.uniform, atribuicao=None):
     """registrar(envio_id, dados, conta_email, modelo, status, erro) -> bool (False = não gravou no histórico).
-    progresso(posicao_concluida, resumo) é chamado a cada linha. Devolve Resumo."""
+    progresso(posicao_concluida, resumo) é chamado a cada linha. Devolve Resumo.
+    atribuicao: índice da variante (modelo) de cada linha, quando a campanha mistura modelos; se faltar, é sorteada aqui."""
     resumo = Resumo(total=len(df))
     triagem = Triagem(descadastrados, ja_enviados, params.permitir_reenvio)
     d_min, d_max = sorted((params.delay_min, params.delay_max))
     erros_seguidos, ponteiro = 0, 0
+    variantes = variacoes.da_campanha(params.modelo, params.nome_modelo)
+    if atribuicao is None:
+        atribuicao = variacoes.atribuir(len(df), variantes)
 
     for pos, (_, linha) in enumerate(df.iterrows()):
         if parar():
@@ -70,20 +76,25 @@ def executar_campanha(df, mapa, contas, enviados_hoje, descadastrados, ja_enviad
                                     "planilha (quem já recebeu será pulado automaticamente).")
             break
 
-        dados = preparar_dados(reg, params.modelo, params.ctx, envio_id)
+        variante = variantes[variacoes.indice_da_linha(atribuicao, pos, len(variantes))]
+        rotulo = variante["rotulo"]
+        contagem = resumo.por_variante.setdefault(rotulo, {"enviados": 0, "erros": 0})
+        dados = preparar_dados(reg, variante["modelo"], params.ctx, envio_id)
         try:
             gerente.enviar(conta, construir_mensagem(conta, dados["email"], dados, params.ctx["empresa"]))
             resumo.sucessos += 1
+            contagem["enviados"] += 1
             erros_seguidos = 0
             enviados_hoje[conta["email"]] = enviados_hoje.get(conta["email"], 0) + 1
             resumo.resultado[pos] = (f"Sucesso (via {conta['email']})", hora)
-            if not registrar(envio_id, dados, conta["email"], params.nome_modelo, "enviado", ""):
+            if not registrar(envio_id, dados, conta["email"], rotulo, "enviado", ""):
                 resumo.falhas_log += 1
         except Exception as erro:  # noqa: BLE001 — qualquer falha de envio vira registro, não derruba a campanha
             resumo.erros += 1
+            contagem["erros"] += 1
             erros_seguidos += 1
             resumo.resultado[pos] = (f"Erro: {erro}", hora)
-            if not registrar(envio_id, dados, conta["email"], params.nome_modelo, "erro", str(erro)):
+            if not registrar(envio_id, dados, conta["email"], rotulo, "erro", str(erro)):
                 resumo.falhas_log += 1
             if conta_esgotada(erro):
                 enviados_hoje[conta["email"]] = 10 ** 9

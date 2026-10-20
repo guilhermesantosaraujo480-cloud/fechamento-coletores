@@ -98,7 +98,8 @@ def processar_campanha(sb, camp, cofre, gerente, prazo, relogio=time.monotonic, 
             resumo = campanha.executar_campanha(
                 df, mapa, contas, enviados_hoje, descadastrados, ja_enviados, gerente, params,
                 registrar=lambda *a: repo.registrar_envio(sb, *a), progresso=progresso, parar=parar,
-                dormir=dormir, sortear=sortear)
+                dormir=dormir, sortear=sortear,
+                atribuicao=[d["dados"].get("_variante") for d in lote_atual])
             contadores["falhas_log"] += resumo.falhas_log
             # o que não foi processado volta para a fila
             nao_feitos = [lote_atual[i]["id"] for i in range(len(lote_atual)) if i not in resumo.resultado]

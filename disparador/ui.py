@@ -7,12 +7,12 @@ import streamlit.components.v1 as components
 
 from core import auditoria, sessao
 from core.config import cfg
-from core.consulta import buscar_todos, contar
+from core.consulta import buscar_todos
 from core.exportacao import gerar_excel
 from core.utils import agora_br, serie_utc_para_br
 from ui.componentes import baixar_excel, cabecalho, cartao, erro_banco, metricas, navegacao, vazio
 
-from . import campanha, colunas, fila, gatilho, ia, planilha, templates
+from . import campanha, colunas, fila, gatilho, ia, planilha, templates, variacoes
 from . import metricas as met
 from . import repositorio as repo
 from .crypto import Cofre
@@ -76,6 +76,7 @@ def _modelos_disponiveis(sb):
     opcoes = {
         "[Padrão 1] Cancelamento (voluntário/involuntário)": {"tipo": "padrao1"},
         "[Padrão 2] Comunicado de rota técnica": {"tipo": "padrao2"},
+        **variacoes.modelos_do_pacote(),
     }
     try:
         todos = repo.listar_modelos(sb)
@@ -99,7 +100,7 @@ def _teste(contas, dados_previa, empresa):
     if c2.button("📨 Enviar teste", use_container_width=True):
         if not email_valido(email_teste):
             st.error("Informe um e-mail de teste válido.")
-            return
+            return email_teste
         gerente = GerenteSMTP()
         try:
             gerente.enviar(contas[0], templates.construir_mensagem(contas[0], email_teste, dados_previa, empresa))
@@ -108,6 +109,63 @@ def _teste(contas, dados_previa, empresa):
             st.error(f"Falha no teste: {erro}")
         finally:
             gerente.fechar()
+    return email_teste
+
+
+def _teste_todas(contas, variantes, reg, ctx, empresa, email_teste):
+    """Manda UM e-mail de teste de cada modelo da mistura (assunto marcado com a variante)."""
+    if st.button(f"📨 Enviar teste das {len(variantes)} variações", use_container_width=True, key="teste_todas"):
+        if not email_valido(email_teste):
+            st.error("Preencha acima o e-mail para teste.")
+            return
+        gerente, enviados, falhas = GerenteSMTP(), 0, []
+        try:
+            for i, v in enumerate(variantes, 1):
+                dados = templates.preparar_dados(reg, v["modelo"], ctx, f"teste-{i}")
+                dados["assunto"] = f"[TESTE {i}/{len(variantes)} · {v['rotulo'][:40]}] {dados['assunto']}"
+                try:
+                    gerente.enviar(contas[0], templates.construir_mensagem(contas[0], email_teste, dados, empresa))
+                    enviados += 1
+                except Exception as erro:  # noqa: BLE001
+                    falhas.append(f"{v['rotulo']}: {erro}")
+        finally:
+            gerente.fechar()
+        if enviados:
+            st.success(f"✅ {enviados} teste(s) enviados para {email_teste}. Confira também o spam.")
+        for f in falhas:
+            st.error(f)
+
+
+def _escolher_modelos(opcoes):
+    """Um modelo ou uma mistura (até 10). Devolve (nome_modelo, modelo) ou None se faltar escolha."""
+    modo = st.radio("Quantos modelos nesta campanha?", ["Um modelo", "🔀 Variar entre vários modelos"],
+                    horizontal=True, key="modo_modelos")
+    if modo == "Um modelo":
+        nome = st.selectbox("Modelo do e-mail", list(opcoes))
+        return nome, opcoes[nome]
+    pacote = [n for n in opcoes if n.startswith("[Pacote]")]
+    escolhidos = st.multiselect(f"Modelos da mistura (até {variacoes.MAX_VARIANTES})", list(opcoes),
+                                default=pacote[:variacoes.MAX_VARIANTES], max_selections=variacoes.MAX_VARIANTES,
+                                key="mistura_modelos")
+    if not escolhidos:
+        st.info("Escolha ao menos um modelo.")
+        return None
+    tabela = pd.DataFrame([{"Modelo": n, "Tom": variacoes.ROTULO_TOM[variacoes.tom_do_modelo(opcoes[n])],
+                            "Aparência": "Simples" if opcoes[n].get("layout") == "simples" else "Cartão",
+                            "Peso": 1.0} for n in escolhidos])
+    st.caption("**Peso** = quanto este modelo aparece em relação aos outros (1 = igual). Peso 0 tira o modelo da campanha. "
+               "Cada pessoa recebe um só modelo, embaralhado entre a lista toda.")
+    editada = st.data_editor(tabela, hide_index=True, use_container_width=True, disabled=["Modelo", "Tom", "Aparência"],
+                             key=f"pesos_{abs(hash(tuple(escolhidos))) & 0xffffff}",
+                             column_config={"Peso": st.column_config.NumberColumn(min_value=0.0, max_value=100.0, step=0.5)})
+    try:
+        multi = variacoes.montar_multi([{"rotulo": r["Modelo"], "peso": r["Peso"], "modelo": opcoes[r["Modelo"]]}
+                                        for _, r in editada.iterrows()])
+    except ValueError as erro:
+        st.warning(str(erro))
+        return None
+    n = len(multi["variantes"])
+    return f"🔀 Mistura de {n} modelo{'s' if n != 1 else ''}", multi
 
 
 def _executar(sb, df, mapa, contas, enviados_hoje, params):
@@ -186,12 +244,15 @@ def _pagina_disparo(sb):
     opcoes = _modelos_disponiveis(sb)
     c1, c2 = st.columns(2)
     with c1:
-        nome_modelo = st.selectbox("Modelo do e-mail", list(opcoes))
+        escolha = _escolher_modelos(opcoes)
         whatsapp = st.text_input("WhatsApp de destino (DDI+DDD+número)", value=str(cfg("WHATSAPP_NUMERO")))
     with c2:
         delay_min = st.number_input("Intervalo mínimo entre envios (s)", min_value=1, max_value=60, value=4)
         delay_max = st.number_input("Intervalo máximo entre envios (s)", min_value=1, max_value=60, value=8)
         reenvio = st.checkbox("Permitir reenviar para quem já recebeu", value=False)
+    if escolha is None:
+        return
+    nome_modelo, modelo_escolhido = escolha
     numero = re.sub(r"\D", "", whatsapp)
     if not numero:
         st.warning("Informe o WhatsApp de destino (ou defina `WHATSAPP_NUMERO` nos secrets).")
@@ -200,7 +261,7 @@ def _pagina_disparo(sb):
         st.caption("ℹ️ `URL_FUNCAO_CLIQUE` não definida: o botão abrirá o WhatsApp direto, sem contar cliques.")
     ctx = {"empresa": empresa, "identificacao": str(cfg("EMPRESA_IDENTIFICACAO")), "valor_multa": str(cfg("VALOR_MULTA")),
            "url_clique": str(cfg("URL_FUNCAO_CLIQUE")), "num_whatsapp": numero}
-    params = campanha.Parametros(opcoes[nome_modelo], nome_modelo, ctx, delay_min, delay_max, reenvio)
+    params = campanha.Parametros(modelo_escolhido, nome_modelo, ctx, delay_min, delay_max, reenvio)
 
     # ---- 3. relatório pré-envio
     st.markdown("#### 3 · Quem vai receber")
@@ -227,11 +288,18 @@ def _pagina_disparo(sb):
     if primeiro is None:
         st.error("Nenhum e-mail válido nas primeiras linhas da planilha.")
         return
-    dados_previa = templates.preparar_dados(primeiro, params.modelo, ctx, "previa")
+    variantes = variacoes.da_campanha(params.modelo, params.nome_modelo)
+    ver = variantes[0]
+    if len(variantes) > 1:
+        ver = variantes[st.selectbox("Variação para pré-visualizar e testar", range(len(variantes)),
+                                     format_func=lambda i: variantes[i]["rotulo"], key="ver_variante")]
+    dados_previa = templates.preparar_dados(primeiro, ver["modelo"], ctx, "previa")
     with st.expander("👁️ Pré-visualizar o e-mail"):
         st.caption(f"Assunto: {dados_previa['assunto']}")
         components.html(dados_previa["html"], height=720, scrolling=True)
-    _teste(contas, dados_previa, empresa)
+    email_teste = _teste(contas, dados_previa, empresa)
+    if len(variantes) > 1:
+        _teste_todas(contas, variantes, primeiro, ctx, empresa, email_teste)
 
     # ---- 5. disparo
     st.markdown("#### 5 · Disparar")
@@ -280,6 +348,22 @@ def _enfileirar(sb, df, mapa, params, nome):
 
 
 # =============================================================================== FILA
+def _tabela_variantes(sb, c):
+    """Campanha com vários modelos: quantos de cada modelo já saíram / deram erro."""
+    if not variacoes.e_multi(c.get("modelo")):
+        return
+    vs = variacoes.da_campanha(c["modelo"], c.get("modelo_nome") or "")
+    if not st.checkbox("📊 Ver andamento por modelo", key=f"vv_{c['id']}"):
+        return
+    try:
+        linhas = fila.destinos(sb, c["id"])
+    except Exception as erro:
+        st.caption(f"Não consegui ler os destinos: {erro}")
+        return
+    tabela = fila.resumo_por_variante(linhas, vs)
+    st.dataframe(pd.DataFrame(tabela), hide_index=True, use_container_width=True)
+
+
 def _cartao_campanha(sb, c):
     feitos = c["enviados"] + c["erros"] + c["ignorados"]
     restam = max(c["total"] - feitos, 0)
@@ -294,6 +378,7 @@ def _cartao_campanha(sb, c):
             st.warning(c["aviso"])
         if c.get("falhas_log"):
             st.warning(f"{c['falhas_log']} envio(s) não foram gravados no histórico; esses clientes podem receber de novo.")
+        _tabela_variantes(sb, c)
         st.caption(f"Modelo: {c.get('modelo_nome') or '—'} · criada por {c.get('criado_por') or '—'} · "
                    f"atualizada {serie_utc_para_br(pd.Series([c.get('atualizado_em') or c.get('criado_em')])).iloc[0]}")
         b = st.columns(4)
@@ -534,8 +619,8 @@ def _pagina_historico(sb):
 @st.cache_data(ttl=60, show_spinner=False)
 def _dados_cliques(_sb):
     cliques = pd.DataFrame(repo.listar_cliques(_sb))
-    envios = pd.DataFrame(buscar_todos(_sb, "envios_email", "id,envio_id,data_hora", {"status": "enviado"}))
-    return cliques, envios, contar(_sb, "envios_email", {"status": "enviado"})
+    envios = pd.DataFrame(buscar_todos(_sb, "envios_email", "id,envio_id,data_hora,email,modelo,status"))
+    return cliques, envios, int((envios["status"] == "enviado").sum()) if not envios.empty else 0
 
 
 def _pagina_cliques(sb):
@@ -548,14 +633,29 @@ def _pagina_cliques(sb):
     except Exception as erro:
         st.error(f"Erro ao carregar métricas de clique: {erro}")
         return
+    classificados = met.classificar_cliques(cliques, envios) if not cliques.empty else cliques
     if cliques.empty:
         vazio("Nenhum clique registrado até o momento.")
+    else:
+        r = met.resumir(classificados, total_enviados)
+        metricas([("Cliques registrados", r.total), ("🤖 De robôs", r.robos), ("🙋 De pessoas", r.pessoas),
+                  ("Clientes que clicaram", r.envios_com_pessoa, "E-mails distintos com clique de pessoa"),
+                  ("Taxa real de clique", f"{r.taxa_pessoas}%", "Clientes que clicaram ÷ e-mails enviados")])
+    try:
+        sair = repo.emails_descadastrados(sb)
+    except Exception:
+        sair = set()
+    st.markdown("##### 🧪 Desempenho por modelo")
+    st.caption("Compare as variações: qual modelo gerou mais cliques de pessoas e mais pedidos de saída.")
+    por_modelo = met.desempenho_por_modelo(envios, classificados, sair)
+    if por_modelo.empty:
+        vazio("Ainda não há envios com modelo registrado.")
+    else:
+        st.dataframe(por_modelo, hide_index=True, use_container_width=True)
+        baixar_excel("📊 Baixar desempenho por modelo (.xlsx)", gerar_excel({"Por modelo": por_modelo}),
+                     "desempenho_por_modelo.xlsx", chave="baixar_por_modelo")
+    if cliques.empty:
         return
-    classificados = met.classificar_cliques(cliques, envios)
-    r = met.resumir(classificados, total_enviados)
-    metricas([("Cliques registrados", r.total), ("🤖 De robôs", r.robos), ("🙋 De pessoas", r.pessoas),
-              ("Clientes que clicaram", r.envios_com_pessoa, "E-mails distintos com clique de pessoa"),
-              ("Taxa real de clique", f"{r.taxa_pessoas}%", "Clientes que clicaram ÷ e-mails enviados")])
     with st.expander("🔍 Ver detalhes dos cliques"):
         st.dataframe(classificados, hide_index=True, use_container_width=True)
 
