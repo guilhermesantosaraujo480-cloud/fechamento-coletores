@@ -39,7 +39,8 @@ def _envios(sb, coletas):
     escolhido = st.selectbox("Ver foto de um envio", list(rotulos), format_func=rotulos.get,
                              index=None, placeholder="Escolha um envio...")
     if escolhido is not None:
-        mostrar_foto(sb, ordenadas[ordenadas["id"] == escolhido].iloc[0]["foto_url"], largura=260)
+        mostrar_foto(sb, ordenadas[ordenadas["id"] == escolhido].iloc[0]["foto_url"], largura=260,
+                     miniatura=True, chave=f"ext_{escolhido}")
 
 
 def _vales(sb, vales):
@@ -56,7 +57,8 @@ def _vales(sb, vales):
     escolhido = st.selectbox("Ver comprovante de um vale", list(rotulos), format_func=rotulos.get,
                              index=None, placeholder="Escolha um vale...")
     if escolhido is not None:
-        mostrar_foto(sb, ordenados[ordenados["id"] == escolhido].iloc[0]["foto_url"], largura=260)
+        mostrar_foto(sb, ordenados[ordenados["id"] == escolhido].iloc[0]["foto_url"], largura=260,
+                     miniatura=True, chave=f"extv_{escolhido}")
 
 
 def _premios(premios):

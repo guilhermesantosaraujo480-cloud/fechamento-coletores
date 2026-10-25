@@ -17,12 +17,12 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parent
 MANIFESTO = RAIZ / "MANIFESTO.json"
 IGNORAR = {".git", "__pycache__", ".devcontainer", "bipagem_logs", ".venv", "venv", "node_modules"}
-EXTENSOES = {".py", ".md", ".txt", ".sql", ".yml", ".yaml", ".toml", ".bat", ".exemplo"}
+EXTENSOES = {".py", ".md", ".txt", ".sql", ".yml", ".yaml", ".toml", ".bat", ".exemplo", ".html"}
 
 # arquivo -> (tamanho mínimo em bytes, textos que PRECISAM aparecer nele)
 ESSENCIAIS = {
     "app.py": (2000, ["PAGINAS_ADM"]),
-    "README.md": (1500, ["# "]),
+    "README.md": (12000, ["# ", "Histórico de mudanças", "Regras que não podem quebrar", "Mapa dos arquivos"]),
     "MELHORIAS.md": (500, ["# "]),
     "requirements.txt": (40, ["streamlit", "supabase"]),
     "requirements-worker.txt": (30, ["supabase", "pandas", "cryptography"]),
@@ -38,6 +38,10 @@ ESSENCIAIS = {
     "migracao_v3.sql": (500, ["create"]),
     "migracao_v4.sql": (1000, ["campanhas"]),
     "migracao_v5.sql": (800, ["bipagem_lotes", "qtd_acrescimo"]),
+    "migracao_v6.sql": (1500, ["create index", "limpar_historico_antigo"]),
+    ".github/workflows/manter_ativo.yml": (300, ["APP_URL"]),
+    "ui/coletor/camera.py": (800, ["camera_leve"]),
+    "ui/coletor/camera_leve/index.html": (1500, ["streamlit:componentReady", "setComponentValue"]),
     "bipagem/agente.py": (2000, ["def main"]),
     "bipagem/motor.py": (2000, ["def "]),
     "bipagem/reintegra.py": (2000, ["selenium"]),

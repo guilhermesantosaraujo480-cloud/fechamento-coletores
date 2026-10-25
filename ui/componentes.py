@@ -38,7 +38,18 @@ def metricas(itens):
         coluna.metric(rotulo, valor, help=ajuda)
 
 
-def mostrar_foto(sb, valor, largura=None, legenda=None):
+def mostrar_foto(sb, valor, largura=None, legenda=None, miniatura=False, chave=None):
+    """miniatura=True: mostra a versão pequena (gasta ~10x menos dados) e deixa abrir a inteira sob demanda.
+    Fotos antigas (sem miniatura) aparecem inteiras, como sempre. `chave` precisa ser única na página."""
+    if miniatura and chave and dados.tem_miniatura(valor):
+        inteira = bool(st.session_state.get(f"ampliar_{chave}"))
+        url = dados.url_foto(sb, valor, miniatura=not inteira)
+        if url:
+            st.image(url, width=largura, caption=legenda) if largura else st.image(url, use_container_width=True, caption=legenda)
+            st.checkbox("🔍 Ver foto inteira", key=f"ampliar_{chave}")
+        else:
+            st.caption("📷 Sem foto anexada")
+        return
     url = dados.url_foto(sb, valor)
     if not url:
         st.caption("📷 Sem foto anexada")

@@ -51,7 +51,7 @@ def processar_campanha(sb, camp, cofre, gerente, prazo, relogio=time.monotonic, 
     params = campanha.Parametros(camp["modelo"], camp.get("modelo_nome") or camp["nome"], camp["ctx"],
                                  float(camp["delay_min"]), float(camp["delay_max"]), bool(camp["permitir_reenvio"]))
     try:
-        ja_enviados = repo.ja_enviados(sb)
+        ja_enviados = repo.ja_enviados(sb, fila.protocolos(sb, camp["id"]))
         recuperar_interrompidos(sb, camp["id"], ja_enviados)
         mapa = {c: c for c in COLUNAS}
         while True:

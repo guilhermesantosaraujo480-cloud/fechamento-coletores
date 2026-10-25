@@ -16,9 +16,13 @@ h1, h2, h3 { letter-spacing: -0.01em; }
 div.stButton > button, div.stDownloadButton > button, a[data-testid="stBaseLinkButton-secondary"] {
     border-radius: 10px;
 }
+img { max-width: 100%; height: auto; }
 @media (max-width: 640px) {
     .block-container { padding-left: 0.8rem; padding-right: 0.8rem; }
     [data-testid="stMetricValue"] { font-size: 1.25rem; }
+    /* celular: botões fáceis de tocar e campos que não dão "zoom" automático no iPhone */
+    div.stButton > button, div.stDownloadButton > button { min-height: 2.9rem; }
+    input, textarea, [data-baseweb="select"] { font-size: 16px !important; }
 }
 </style>
 """

@@ -191,3 +191,25 @@ class TestRelatorioPorModelo(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestJaEnviadosFiltrado(unittest.TestCase):
+    def banco(self):
+        linhas = [{"id": i, "protocolo": f"P{i}", "email": f"c{i}@x.com", "status": "enviado"} for i in range(1, 401)]
+        linhas.append({"id": 999, "protocolo": "P1", "email": "c1@x.com", "status": "erro"})
+        return fakes.FakeSupabase(envios_email=linhas)
+
+    def test_filtrado_e_igual_ao_completo_para_os_protocolos_da_campanha(self):
+        from disparador import repositorio as repo
+        sb = self.banco()
+        completo = repo.ja_enviados(sb)
+        parcial = repo.ja_enviados(sb, [f"P{i}" for i in range(1, 301)] + ["P9999"])
+        self.assertEqual(parcial, {c for c in completo if int(c.split("|")[0][1:]) <= 300})
+        self.assertEqual(len(completo), 400)
+
+    def test_protocolo_estranho_ou_vazio_le_o_historico_todo(self):
+        from disparador import repositorio as repo
+        sb = self.banco()
+        self.assertEqual(len(repo.ja_enviados(sb, ["P1", ""])), 400)
+        self.assertEqual(len(repo.ja_enviados(sb, ["P1", "a,b)"])), 400)
+        self.assertEqual(len(repo.ja_enviados(sb, [])), 400)

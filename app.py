@@ -3,38 +3,43 @@ import streamlit as st
 
 st.set_page_config(page_title="Sistema Vivo Coletas", page_icon="📱", layout="wide", initial_sidebar_state="auto")
 
+import importlib  # noqa: E402
 import time as _time  # noqa: E402
 
 from streamlit_cookies_controller import CookieController  # noqa: E402
 
 from core import dados, sessao  # noqa: E402
 from core.db import get_supabase  # noqa: E402
-from ui import conta, estilos, login  # noqa: E402
-from ui.adm import auditoria, bipagem, coletas, emails, fechamento, premiacoes, rotas, usuarios, vales, visao_geral  # noqa: E402
+from ui import estilos, login  # noqa: E402
 from ui.adm.filtros import filtros_sidebar  # noqa: E402
 from ui.componentes import navegacao  # noqa: E402
-from ui.coletor import comprovantes, enviar, extrato  # noqa: E402
 
-# página -> (função, usa os filtros de período/coletor da barra lateral?)
+# página -> (módulo, usa os filtros de período/coletor da barra lateral?)
+# Os módulos só são carregados quando a página é aberta: o coletor não gasta memória/tempo com as telas do
+# administrador (rotas, disparador, bipagem...), e o administrador só carrega a tela que está usando.
 PAGINAS_ADM = {
-    "📊 Visão geral": (visao_geral.render, True),
-    "📋 Coletas": (coletas.render, True),
-    "💵 Fechamento": (fechamento.render, True),
-    "📉 Vales": (vales.render, True),
-    "🏅 Premiações": (premiacoes.render, True),
-    "🚚 Rotas": (rotas.render, False),
-    "🔖 Bipagem": (bipagem.render, False),
-    "👥 Usuários": (usuarios.render, False),
-    "📧 E-mails": (emails.render, False),
-    "🛡️ Auditoria": (auditoria.render, False),
-    "⚙️ Minha conta": (conta.render, False),
+    "📊 Visão geral": ("ui.adm.visao_geral", True),
+    "📋 Coletas": ("ui.adm.coletas", True),
+    "💵 Fechamento": ("ui.adm.fechamento", True),
+    "📉 Vales": ("ui.adm.vales", True),
+    "🏅 Premiações": ("ui.adm.premiacoes", True),
+    "🚚 Rotas": ("ui.adm.rotas", False),
+    "🔖 Bipagem": ("ui.adm.bipagem", False),
+    "👥 Usuários": ("ui.adm.usuarios", False),
+    "📧 E-mails": ("ui.adm.emails", False),
+    "🛡️ Auditoria": ("ui.adm.auditoria", False),
+    "⚙️ Minha conta": ("ui.conta", False),
 }
 PAGINAS_COLETOR = {
-    "📲 Enviar coleta": enviar.render,
-    "📊 Meu extrato": extrato.render,
-    "🔍 Comprovantes": comprovantes.render,
-    "⚙️ Minha conta": conta.render,
+    "📲 Enviar coleta": "ui.coletor.enviar",
+    "📊 Meu extrato": "ui.coletor.extrato",
+    "🔍 Comprovantes": "ui.coletor.comprovantes",
+    "⚙️ Minha conta": "ui.conta",
 }
+
+
+def _desenhar(modulo):
+    return importlib.import_module(modulo).render
 
 
 def barra_superior(sb, cookies):
@@ -55,7 +60,8 @@ def area_adm(sb):
         if pendentes:
             st.warning(f"⏳ {pendentes} coleta(s) para aprovar")
     pagina = navegacao(list(PAGINAS_ADM), "nav_adm", local="sidebar")
-    funcao, usa_filtro = PAGINAS_ADM[pagina]
+    modulo, usa_filtro = PAGINAS_ADM[pagina]
+    funcao = _desenhar(modulo)
     if usa_filtro:
         try:
             coletores = dados.nomes_coletores(sb, somente_ativos=False)
@@ -68,7 +74,7 @@ def area_adm(sb):
 
 def area_coletor(sb):
     pagina = navegacao(list(PAGINAS_COLETOR), "nav_coletor")
-    PAGINAS_COLETOR[pagina](sb)
+    _desenhar(PAGINAS_COLETOR[pagina])(sb)
 
 
 def _marcador():
@@ -77,6 +83,7 @@ def _marcador():
     if st.query_params.get("debug") != "1":
         return lambda texto: None
     inicio = _time.perf_counter()
+    st.caption(f"🔧 Streamlit {getattr(st, '__version__', '?')} — para travar nesta versão, use `streamlit=={getattr(st, '__version__', '?')}` no requirements.txt")
     return lambda texto: st.caption(f"🔧 {_time.perf_counter() - inicio:5.1f}s · {texto}")
 
 

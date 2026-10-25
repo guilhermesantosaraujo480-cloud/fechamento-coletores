@@ -98,7 +98,7 @@ def _pendentes(sb, pendentes):
     for i, linha in enumerate(ordenadas.head(MAX_CARTOES).itertuples()):
         with colunas[i % 3]:
             with cartao():
-                mostrar_foto(sb, linha.foto_url)
+                mostrar_foto(sb, linha.foto_url, miniatura=True, chave=f"pend_{linha.id}")
                 st.markdown(f"**{linha.coletor}** · {linha.quantidade} un · {brl(linha.valor_total)}")
                 st.caption(f"📅 {data_br(linha.data)}"
                            + (f" · ➕ {int(linha.qtd_acrescimo)} acrescentados" if linha.qtd_acrescimo else ""))

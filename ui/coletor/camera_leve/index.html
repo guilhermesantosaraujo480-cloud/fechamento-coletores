@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { margin: 0; font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+  .btn { display: block; box-sizing: border-box; width: 100%; text-align: center; padding: 14px 10px; border-radius: 10px;
+         background: #660099; color: #fff; font-size: 16px; font-weight: 600; cursor: pointer; }
+  .btn:active { opacity: .85; }
+  #info { font-size: 13px; color: #555; margin-top: 8px; min-height: 18px; }
+  #prev { display: none; max-width: 100%; max-height: 220px; margin-top: 8px; border-radius: 8px; }
+</style>
+</head>
+<body>
+  <label class="btn" for="arq" id="rotulo">📷 Tirar foto do comprovante</label>
+  <input id="arq" type="file" accept="image/*" capture="environment" style="display:none">
+  <div id="info"></div>
+  <img id="prev" alt="">
+<script>
+  // Protocolo mínimo de componente do Streamlit (sem biblioteca externa).
+  function enviar(tipo, dados) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: tipo}, dados), "*"); }
+  function altura() { enviar("streamlit:setFrameHeight", {height: document.body.scrollHeight + 4}); }
+  enviar("streamlit:componentReady", {apiVersion: 1});
+
+  var LADO = 1280, QUALIDADE = 0.78;
+  var info = document.getElementById("info"), prev = document.getElementById("prev");
+
+  function carregar(arquivo) {
+    if (window.createImageBitmap) {
+      return createImageBitmap(arquivo).catch(function () { return viaImg(arquivo); });
+    }
+    return viaImg(arquivo);
+  }
+  function viaImg(arquivo) {
+    return new Promise(function (ok, erro) {
+      var url = URL.createObjectURL(arquivo), img = new Image();
+      img.onload = function () { URL.revokeObjectURL(url); ok(img); };
+      img.onerror = function () { URL.revokeObjectURL(url); erro(new Error("imagem inválida")); };
+      img.src = url;
+    });
+  }
+
+  document.getElementById("arq").addEventListener("change", function (e) {
+    var arquivo = e.target.files && e.target.files[0];
+    if (!arquivo) { return; }
+    info.textContent = "Preparando a foto...";
+    altura();
+    carregar(arquivo).then(function (img) {
+      var w = img.width, h = img.height, escala = Math.min(1, LADO / Math.max(w, h));
+      var canvas = document.createElement("canvas");
+      canvas.width = Math.round(w * escala); canvas.height = Math.round(h * escala);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      if (img.close) { img.close(); }
+      var dataUrl = canvas.toDataURL("image/jpeg", QUALIDADE);
+      canvas.width = canvas.height = 0; // libera a memória do canvas
+      var kb = Math.round(dataUrl.length * 0.75 / 1024);
+      prev.src = dataUrl; prev.style.display = "block";
+      info.textContent = "✅ Foto pronta (" + kb + " KB). Confira se está legível e toque em Enviar.";
+      document.getElementById("rotulo").textContent = "📷 Tirar outra foto";
+      enviar("streamlit:setComponentValue", {dataType: "json", value: {b64: dataUrl.split(",")[1], kb: kb}});
+      altura();
+    }).catch(function () {
+      info.textContent = "Não consegui preparar esta foto. Use a opção 'enviar do jeito normal' logo abaixo.";
+      altura();
+    });
+  });
+  window.addEventListener("message", function () { altura(); });
+  altura();
+</script>
+</body>
+</html>

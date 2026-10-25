@@ -142,6 +142,47 @@ class TestArmazenamento(unittest.TestCase):
         self.assertIn(caminho, db.arquivos)
         self.assertNotIn("/", caminho)
 
+    def test_miniatura_e_nomes(self):
+        from PIL import Image
+        buf = BytesIO()
+        Image.new("RGB", (3000, 2000), "red").save(buf, "JPEG")
+        principal, mini = arm.preparar_foto(buf.getvalue())
+        self.assertEqual(max(Image.open(BytesIO(principal)).size), 1280)
+        self.assertEqual(max(Image.open(BytesIO(mini)).size), 320)
+        self.assertLess(len(mini), len(principal))
+        db = FakeSupabase()
+        caminho = arm.enviar_foto_pronta(db, principal, mini, "coleta_ana")
+        self.assertTrue(caminho.endswith("_m.jpg"))
+        self.assertEqual(arm.caminho_miniatura(caminho), caminho[:-6] + "_t.jpg")
+        self.assertIn(arm.caminho_miniatura(caminho), db.arquivos)
+        self.assertIsNone(arm.caminho_miniatura("antiga_123.jpg"))
+        self.assertIsNone(arm.caminho_miniatura(None))
+
+    def test_miniatura_que_falha_nao_impede_o_envio(self):
+        class DbRuim(FakeSupabase):
+            pass
+        db = DbRuim()
+        original = db.storage.from_("x").__class__.upload
+
+        def upload(self, path, file, file_options=None):
+            if path.endswith("_t.jpg"):
+                raise RuntimeError("falhou")
+            return original(self, path, file, file_options)
+        db.storage.from_("x").__class__.upload = upload
+        try:
+            caminho = arm.enviar_foto_pronta(db, b"principal", b"mini", "coleta_ana")
+        finally:
+            db.storage.from_("x").__class__.upload = original
+        self.assertTrue(caminho.endswith(".jpg") and not caminho.endswith("_m.jpg"))  # sem promessa de miniatura
+        self.assertIn(caminho, db.arquivos)
+
+    def test_jpeg_grande_e_aberto_em_tamanho_reduzido(self):
+        from PIL import Image
+        buf = BytesIO()
+        Image.new("RGB", (4000, 3000), "blue").save(buf, "JPEG")
+        saida = Image.open(BytesIO(arm.processar_imagem(buf.getvalue())))
+        self.assertEqual(max(saida.size), 1280)
+
     def test_referencias(self):
         self.assertEqual(arm.referencia_foto(None), (None, None))
         self.assertEqual(arm.referencia_foto("nan"), (None, None))

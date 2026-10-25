@@ -78,6 +78,11 @@ def destinos(sb, camp_id, status=None):
     return buscar_todos(sb, "campanha_destinos", "ordem,protocolo,email,status,detalhe,processado_em,dados", filtros, ordem="id")
 
 
+def protocolos(sb, camp_id):
+    """Só os protocolos da campanha (leve: sem os dados completos de cada linha)."""
+    return [r["protocolo"] for r in buscar_todos(sb, "campanha_destinos", "id,protocolo", {"campanha_id": camp_id}, ordem="id")]
+
+
 def contagens(sb, camp_id):
     """Conta de verdade no banco (corrige qualquer diferença dos contadores)."""
     cont = {"pendente": 0, "enviando": 0, "enviado": 0, "erro": 0, "ignorado": 0}

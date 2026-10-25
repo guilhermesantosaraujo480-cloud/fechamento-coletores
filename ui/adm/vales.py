@@ -64,7 +64,7 @@ def _historico(sb, vales):
         if escolhido is None:
             return
         linha = ordenados[ordenados["id"] == escolhido].iloc[0]
-        mostrar_foto(sb, linha["foto_url"], largura=260, legenda="Comprovante do vale")
+        mostrar_foto(sb, linha["foto_url"], largura=260, legenda="Comprovante do vale", miniatura=True, chave=f"vale_{escolhido}")
         with st.expander("🗑️ Excluir este vale (lançado por engano)"):
             if confirmar("Confirmo a exclusão", f"chk_del_vale_{escolhido}") and st.button("Excluir vale", key=f"del_vale_{escolhido}"):
                 sb.table("vales_coleta").delete().eq("id", int(escolhido)).execute()

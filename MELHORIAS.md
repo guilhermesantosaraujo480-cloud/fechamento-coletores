@@ -14,6 +14,9 @@
 - **Variação de modelos:** até 10 modelos por campanha, tom suave/neutro/firme, aparência cartão/simples, distribuição
   proporcional e embaralhada, teste de todas as variações, relatório por modelo.
 - **Bipagem:** extração de OS/seriais do PDF, regra do ponto só quando necessário, agente local com Selenium, lotes pelo site.
+- **Desempenho e custo:** miniaturas de foto, foto aberta com pouca memória, o app carrega só a tela aberta, consultas com
+  menos colunas e cache, triagem de e-mails por protocolo, cliques/histórico por período, índices (`migracao_v6.sql`),
+  limpeza opcional, câmera leve opcional, ajustes de celular. Detalhes na seção 10 do README.
 - **Blindagem de arquivos:** `verificar_projeto.py` + verificação automática no GitHub (acusa arquivo vazio/trocado).
 
 ## Próximos passos sugeridos
@@ -22,4 +25,5 @@
 2. **Aquecimento automático** das caixas novas (limite diário crescente por conta).
 3. **Teste real da bipagem** com um lote de 1 ordem antes de usar em volume.
 4. **Teste do envio de WhatsApp** pelo gateway (chip dedicado; gateways não oficiais podem ser banidos).
-5. Usar o relatório por modelo para manter só as variações com mais cliques e menos descadastros.
+5. Ligar a câmera leve (`FOTO_LEVE`) depois de testar no celular dos coletores.
+6. Usar o relatório por modelo para manter só as variações com mais cliques e menos descadastros.

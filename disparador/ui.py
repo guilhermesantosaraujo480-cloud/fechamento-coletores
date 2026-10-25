@@ -1,5 +1,6 @@
 """Interface do disparador de e-mails (única parte do pacote que usa Streamlit)."""
 import re
+from datetime import timedelta
 
 import pandas as pd
 import streamlit as st
@@ -9,7 +10,7 @@ from core import auditoria, sessao
 from core.config import cfg
 from core.consulta import buscar_todos
 from core.exportacao import gerar_excel
-from core.utils import agora_br, serie_utc_para_br
+from core.utils import agora_br, hoje_br, serie_utc_para_br
 from ui.componentes import baixar_excel, cabecalho, cartao, erro_banco, metricas, navegacao, vazio
 
 from . import campanha, colunas, fila, gatilho, ia, planilha, templates, variacoes
@@ -19,6 +20,7 @@ from .crypto import Cofre
 from .envio_smtp import GerenteSMTP
 from .utils import email_valido, separar_emails
 
+PERIODOS_CLIQUES = {"Últimos 30 dias": 30, "Últimos 90 dias": 90, "Último ano": 365, "Tudo": 0}
 SECOES = ["🚀 Disparos", "⏱️ Fila", "✉️ Modelos", "🔑 Contas", "🚫 Descadastros", "📜 Histórico", "📈 Cliques"]
 
 
@@ -27,8 +29,17 @@ def _cofre():
 
 
 @st.cache_data(ttl=60, show_spinner=False)
-def _listas_de_bloqueio(_sb):
-    return repo.emails_descadastrados(_sb), repo.ja_enviados(_sb)
+def _listas_de_bloqueio(_sb, protocolos):
+    return repo.emails_descadastrados(_sb), repo.ja_enviados(_sb, protocolos)
+
+
+def _protocolos(df, mapa):
+    """Protocolos da planilha (calculado uma vez por planilha/mapeamento, não a cada clique)."""
+    chave = ("protocolos", st.session_state.get("planilha_chave"), mapa.get("protocolo"), len(df))
+    if st.session_state.get("_protocolos_chave") != chave:
+        st.session_state["_protocolos"] = tuple(colunas.registro_da_linha(l, mapa)["protocolo"] for _, l in df.iterrows())
+        st.session_state["_protocolos_chave"] = chave
+    return st.session_state["_protocolos"]
 
 
 # =========================================================================== DISPAROS
@@ -170,7 +181,7 @@ def _escolher_modelos(opcoes):
 
 def _executar(sb, df, mapa, contas, enviados_hoje, params):
     try:  # lista fresca (sem cache): descadastros e histórico precisam estar atualizados na hora do envio
-        descadastrados, ja_enviados = repo.emails_descadastrados(sb), repo.ja_enviados(sb)
+        descadastrados, ja_enviados = repo.emails_descadastrados(sb), repo.ja_enviados(sb, _protocolos(df, mapa))
     except Exception as erro:
         st.error(f"Não foi possível consultar descadastros/histórico (rodou o SQL de migração?): {erro}")
         return
@@ -266,7 +277,7 @@ def _pagina_disparo(sb):
     # ---- 3. relatório pré-envio
     st.markdown("#### 3 · Quem vai receber")
     try:
-        descadastrados, ja_enviados = _listas_de_bloqueio(sb)
+        descadastrados, ja_enviados = _listas_de_bloqueio(sb, _protocolos(df, mapa))
     except Exception as erro:
         st.error(f"Não foi possível consultar descadastros/histórico (rodou o SQL de migração?): {erro}")
         return
@@ -590,7 +601,7 @@ def _pagina_descadastros(sb):
 # ======================================================================== HISTÓRICO
 def _pagina_historico(sb):
     try:
-        dados = repo.historico(sb, 1000)
+        dados = repo.historico(sb, int(st.session_state.get("limite_historico", 500)))
     except Exception as erro:
         st.error(f"Erro ao carregar histórico (a tabela envios_email existe?): {erro}")
         return
@@ -612,24 +623,34 @@ def _pagina_historico(sb):
     vitrine = df[["Horário", "nome", "email", "protocolo", "conta", "modelo", "status", "erro"]]
     st.dataframe(vitrine, hide_index=True, use_container_width=True)
     baixar_excel("📊 Baixar histórico (.xlsx)", gerar_excel({"Historico": vitrine}), "historico_envios.xlsx")
-    st.caption("Mostrando os 1000 envios mais recentes.")
+    st.selectbox("Quantos envios recentes carregar", [200, 500, 1000, 3000], index=1, key="limite_historico",
+                 help="Menos linhas = tela mais rápida. Para o histórico completo use o relatório da campanha na Fila.")
+    st.caption(f"Mostrando os {len(dados)} envios mais recentes.")
 
 
 # ========================================================================== CLIQUES
 @st.cache_data(ttl=60, show_spinner=False)
-def _dados_cliques(_sb):
-    cliques = pd.DataFrame(repo.listar_cliques(_sb))
-    envios = pd.DataFrame(buscar_todos(_sb, "envios_email", "id,envio_id,data_hora,email,modelo,status"))
-    return cliques, envios, int((envios["status"] == "enviado").sum()) if not envios.empty else 0
+def _dados_cliques(_sb, dias):
+    desde = hoje_br() - timedelta(days=dias) if dias else None
+    envios = pd.DataFrame(buscar_todos(_sb, "envios_email", "id,envio_id,data_hora,email,modelo,status",
+                                       faixa=("data_hora", desde, None) if desde else None))
+    cliques = pd.DataFrame(repo.listar_cliques(_sb, desde))
+    if not cliques.empty and "envio_id" in cliques.columns and not envios.empty:
+        cliques = cliques[cliques["envio_id"].isin(set(envios["envio_id"]))]  # só cliques dos envios do período
+    total = int((envios["status"] == "enviado").sum()) if not envios.empty else 0
+    return cliques, envios, total
 
 
 def _pagina_cliques(sb):
     st.caption("Separa cliques de **pessoas** dos de **robôs** (scanners de segurança dos provedores de e-mail, "
                "que abrem todos os links logo após o envio).")
-    if st.button("🔄 Atualizar"):
+    c1, c2 = st.columns([2, 1])
+    periodo = c1.selectbox("Período analisado", list(PERIODOS_CLIQUES), index=1, key="periodo_cliques",
+                           help="Períodos menores carregam mais rápido; 'Tudo' lê o histórico inteiro.")
+    if c2.button("🔄 Atualizar", use_container_width=True):
         _dados_cliques.clear()
     try:
-        cliques, envios, total_enviados = _dados_cliques(sb)
+        cliques, envios, total_enviados = _dados_cliques(sb, PERIODOS_CLIQUES[periodo])
     except Exception as erro:
         st.error(f"Erro ao carregar métricas de clique: {erro}")
         return

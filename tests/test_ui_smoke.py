@@ -162,7 +162,39 @@ class TestColetorELogin(Base):
             enviar.render(db)
         nova = db.tabelas["coletas"][-1]
         self.assertEqual((nova["coletor"], nova["quantidade"], nova["status"], nova["valor_total"]), ("Ana", 4, "Pendente", 40.0))
-        self.assertEqual(len(db.arquivos), 1)
+        self.assertEqual(sorted(k[-6:] for k in db.arquivos), ["_m.jpg", "_t.jpg"])  # foto + miniatura
+        self.assertTrue(nova["foto_url"].endswith("_m.jpg"))
+
+    def test_camera_leve_ligada_envia_a_foto_ja_reduzida(self):
+        import base64
+        from io import BytesIO
+        from PIL import Image
+        from ui.coletor import camera, enviar
+        buf = BytesIO()
+        Image.new("RGB", (400, 300), "green").save(buf, "JPEG")
+        v1 = __import__("sys").modules["streamlit.components.v1"]
+        v1.declare_component = lambda nome, path=None: (lambda key=None, default=None: ST.respostas.get(key, default))
+        camera._componente = None
+        ST.secrets["FOTO_LEVE"] = "sim"
+        db = banco()
+        ST.respostas.update({"cam_0": {"b64": base64.b64encode(buf.getvalue()).decode(), "kb": 5}, "qtd_0": 2,
+                             "Enviar para aprovação": True})
+        with self.assertRaises(fakes.Reiniciar):
+            enviar.render(db)
+        self.assertEqual(db.tabelas["coletas"][-1]["quantidade"], 2)
+        self.assertEqual(len(db.arquivos), 2)
+
+    def test_camera_leve_estragada_nao_derruba_o_envio_normal(self):
+        from ui.coletor import camera, enviar
+        v1 = __import__("sys").modules["streamlit.components.v1"]
+
+        def quebrado(nome, path=None):
+            raise RuntimeError("sem componente")
+        v1.declare_component = quebrado
+        camera._componente = None
+        ST.secrets["FOTO_LEVE"] = "sim"
+        enviar.render(banco())  # só desenha: sem foto, sem erro
+        self.assertFalse([a for a in ST.avisos if a[0] == "error"], ST.avisos)
 
     def test_fluxo_de_login_e_sessao(self):
         from core import sessao

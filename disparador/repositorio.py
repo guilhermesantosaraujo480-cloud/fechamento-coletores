@@ -1,9 +1,10 @@
 """Acesso ao banco para o disparador (contas, envios, modelos, descadastros, cliques).
 Erros de leitura SOBEM para quem chamou: esconder uma falha aqui faria o sistema ignorar limites e descadastros."""
+import re
 from datetime import timezone
 
 from core.consulta import buscar_todos
-from core.utils import agora_br
+from core.utils import agora_br, em_lotes
 
 from .templates import WHATS_PADRAO
 
@@ -72,7 +73,22 @@ def _enviados_desde(sb, inicio_iso):
         inicio += 1000
 
 
-def ja_enviados(sb):
+_PROTOCOLO_SIMPLES = re.compile(r"^[\w.\-/]+$")
+MAX_PROTOCOLOS_FILTRADOS = 20000
+
+
+def ja_enviados(sb, protocolos=None):
+    """Conjunto 'protocolo|e-mail' de quem já recebeu. Com `protocolos` (os da campanha em andamento) consulta só eles:
+    o resultado vale o mesmo para a triagem, mas não cresce junto com o histórico inteiro (que pode ter 100 mil linhas).
+    Se algum protocolo tiver caracteres estranhos, volta a ler o histórico todo (nunca arrisca reenviar)."""
+    protocolos = None if protocolos is None else list(protocolos)
+    if protocolos is not None and protocolos and all(str(p).strip() for p in protocolos):  # linha sem protocolo: lê tudo
+        unicos = sorted({str(p).strip() for p in protocolos})
+        if len(unicos) <= MAX_PROTOCOLOS_FILTRADOS and all(_PROTOCOLO_SIMPLES.match(p) for p in unicos):
+            regs = []
+            for lote in em_lotes(unicos, 150):
+                regs.extend(buscar_todos(sb, "envios_email", "id,protocolo,email", {"status": "enviado", "protocolo": lote}))
+            return {f"{r['protocolo']}|{r['email']}" for r in regs}
     regs = buscar_todos(sb, "envios_email", "id,protocolo,email", {"status": "enviado"})
     return {f"{r['protocolo']}|{r['email']}" for r in regs}
 
@@ -91,7 +107,8 @@ def registrar_envio(sb, envio_id, dados, conta_email, modelo_nome, status, erro=
 
 
 def historico(sb, limite=1000):
-    return (sb.table("envios_email").select("*").order("data_hora", desc=True).limit(limite).execute().data) or []
+    return (sb.table("envios_email").select("id,envio_id,data_hora,nome,email,protocolo,conta,modelo,status,erro")
+              .order("data_hora", desc=True).limit(limite).execute().data) or []
 
 
 # ------------------------------------------------------------------ modelos
@@ -137,7 +154,13 @@ def remover_descadastro(sb, email):
 
 
 # ------------------------------------------------------------------- cliques
-def listar_cliques(sb):
+def listar_cliques(sb, desde=None):
+    """Cliques registrados (desde = data inicial, se a coluna data_hora existir; senão lê tudo)."""
+    if desde is not None:
+        try:
+            return buscar_todos(sb, "cliques_email", "*", faixa=("data_hora", desde, None), ordem="id")
+        except Exception:  # noqa: BLE001 — tabela sem essa coluna: lê tudo
+            pass
     try:
         return buscar_todos(sb, "cliques_email", "*", ordem="id")
     except Exception:  # tabela sem coluna `id`: leitura simples (limitada pelo Supabase a 1000 linhas)

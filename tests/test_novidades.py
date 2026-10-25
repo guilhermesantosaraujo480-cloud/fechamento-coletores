@@ -224,7 +224,7 @@ class TestAppRegistraBipagem(Base):
         import re
         with open("app.py", encoding="utf-8") as f:
             texto = f.read()
-        self.assertTrue(re.search(r'"🔖 Bipagem": \(bipagem\.render, False\)', texto))
+        self.assertTrue(re.search(r'"🔖 Bipagem": \("ui\.adm\.bipagem", False\)', texto))
 
 
 if __name__ == "__main__":
