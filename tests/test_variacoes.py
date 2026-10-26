@@ -213,3 +213,62 @@ class TestJaEnviadosFiltrado(unittest.TestCase):
         self.assertEqual(len(repo.ja_enviados(sb, ["P1", ""])), 400)
         self.assertEqual(len(repo.ja_enviados(sb, ["P1", "a,b)"])), 400)
         self.assertEqual(len(repo.ja_enviados(sb, [])), 400)
+
+
+class TestContatoQuemClicou(unittest.TestCase):
+    def envios(self):
+        return pd.DataFrame([
+            {"envio_id": "e1", "protocolo": "100", "nome": "Maria Silva", "email": "maria@x.com", "modelo": "A", "status": "enviado"},
+            {"envio_id": "e2", "protocolo": "200", "nome": "João", "email": "joao@x.com", "modelo": "B", "status": "enviado"},
+            {"envio_id": "e3", "protocolo": "300", "nome": "Ana", "email": "ana@x.com", "modelo": "B", "status": "enviado"},
+            {"envio_id": "e4", "protocolo": "400", "nome": "Rui", "email": "rui@x.com", "modelo": "B", "status": "enviado"},
+        ])
+
+    def cliques(self):
+        return pd.DataFrame([
+            {"envio_id": "e1", "perfil": "Pessoa", "data_hora": "2026-10-20T15:00:00+00:00"},
+            {"envio_id": "e1", "perfil": "Pessoa", "data_hora": "2026-10-20T16:00:00+00:00"},
+            {"envio_id": "e2", "perfil": "Pessoa", "data_hora": "2026-10-21T12:00:00+00:00"},
+            {"envio_id": "e3", "perfil": "Pessoa", "data_hora": "2026-10-21T12:00:00+00:00"},
+            {"envio_id": "e4", "perfil": "Robô", "data_hora": "2026-10-21T12:00:01+00:00"},
+        ])
+
+    def test_so_pessoas_um_por_email(self):
+        from disparador import contato
+        q = contato.quem_clicou(self.cliques(), self.envios())
+        self.assertEqual(sorted(q["protocolo"]), ["100", "200", "300"])  # robô (400) fora; e1 uma linha só
+
+    def test_links_descadastro_e_fixo(self):
+        from disparador import contato
+        q = contato.quem_clicou(self.cliques(), self.envios())
+        fonte = {"100|maria@x.com": ("(11) 98765-4321", ""), "200|joao@x.com": ("1133334444", ""),
+                 "300|ana@x.com": ("11912345678", "")}
+        tabela, r = contato.montar_tabela(q, [fonte], {"ana@x.com"}, contato.MENSAGEM_PADRAO, "Minha Empresa")
+        self.assertEqual(r, {"clicaram": 3, "com_whatsapp": 1, "sem_telefone": 1, "descadastrados": 1})
+        maria = tabela[tabela["Protocolo"] == "100"].iloc[0]
+        self.assertTrue(maria["WhatsApp"].startswith("https://wa.me/5511987654321?text="))
+        self.assertIn("Maria", maria["WhatsApp"].replace("%20", " "))
+        self.assertIn("100", maria["WhatsApp"])
+        self.assertNotIn("Ana", " ".join(tabela["Cliente"]))        # quem saiu não aparece
+        self.assertEqual(tabela[tabela["Protocolo"] == "200"].iloc[0]["WhatsApp"], "")  # fixo não tem WhatsApp
+
+    def test_telefone_vem_da_fila_e_da_planilha(self):
+        from disparador import contato
+        reg = {"protocolo": "100", "nome": "Maria", "email": "maria@x.com", "telefone": "11987654321"}
+        base = {"endereco": "", "numero": "", "bairro": "", "cep": "", "tipo": "", "telefone2": ""}
+        sb = fakes.FakeSupabase(contas_email=[])
+        fila.criar_campanha(sb, "adm", "T", "M", {"tipo": "padrao1"}, CTX, 1, 1, False, [{**base, **reg}])
+        self.assertEqual(contato.telefones_da_fila(sb, ["100", "999"]), {"100|maria@x.com": ("11987654321", "")})
+        df = pd.DataFrame({"BA": [200, 300], "Cliente": ["J", "A"], "Email": ["joao@x.com", "ana@x.com"],
+                           "Celular": [11999998888.0, "11 91234-5678"]})
+        mapa = colunas.detectar_colunas(df)
+        self.assertEqual(mapa["telefone"], "Celular")
+        achados = contato.telefones_da_planilha(df, mapa)
+        self.assertEqual(achados["200|joao@x.com"][0], "11999998888")
+        self.assertEqual(achados["200|"][0], "11999998888")      # só pelo protocolo
+        self.assertEqual(achados["|ana@x.com"][0], "11 91234-5678")  # só pelo e-mail
+
+    def test_sem_cliques_ou_sem_envio(self):
+        from disparador import contato
+        self.assertTrue(contato.quem_clicou(pd.DataFrame(), self.envios()).empty)
+        self.assertTrue(contato.quem_clicou(self.cliques(), pd.DataFrame()).empty)

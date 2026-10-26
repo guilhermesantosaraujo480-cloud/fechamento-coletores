@@ -11,10 +11,13 @@ CAMPOS = {
     "bairro": ["bairro"],
     "cep": ["cep"],
     "tipo": ["tipo", "tipo cancelamento", "tipo de cancelamento", "tipo_cancelamento"],
+    "telefone": ["telefone", "celular", "telefone celular", "fone", "tel", "whatsapp", "contato", "telefone 1", "celular 1"],
+    "telefone2": ["telefone 2", "celular 2", "telefone2", "celular2", "tel 2", "fone 2", "telefone alternativo"],
 }
 ROTULOS = {
     "protocolo": "Protocolo (BA)", "nome": "Nome do cliente", "email": "E-mail", "endereco": "Endereço",
     "numero": "Número", "bairro": "Bairro", "cep": "CEP", "tipo": "Tipo de cancelamento",
+    "telefone": "Telefone/celular", "telefone2": "Telefone 2 (opcional)",
 }
 OBRIGATORIOS = ("email",)
 

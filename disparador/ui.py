@@ -13,7 +13,7 @@ from core.exportacao import gerar_excel
 from core.utils import agora_br, hoje_br, serie_utc_para_br
 from ui.componentes import baixar_excel, cabecalho, cartao, erro_banco, metricas, navegacao, vazio
 
-from . import campanha, colunas, fila, gatilho, ia, planilha, templates, variacoes
+from . import campanha, colunas, contato, fila, gatilho, ia, planilha, templates, variacoes
 from . import metricas as met
 from . import repositorio as repo
 from .crypto import Cofre
@@ -632,13 +632,54 @@ def _pagina_historico(sb):
 @st.cache_data(ttl=60, show_spinner=False)
 def _dados_cliques(_sb, dias):
     desde = hoje_br() - timedelta(days=dias) if dias else None
-    envios = pd.DataFrame(buscar_todos(_sb, "envios_email", "id,envio_id,data_hora,email,modelo,status",
+    envios = pd.DataFrame(buscar_todos(_sb, "envios_email", "id,envio_id,data_hora,email,modelo,status,protocolo,nome",
                                        faixa=("data_hora", desde, None) if desde else None))
     cliques = pd.DataFrame(repo.listar_cliques(_sb, desde))
-    if not cliques.empty and "envio_id" in cliques.columns and not envios.empty:
-        cliques = cliques[cliques["envio_id"].isin(set(envios["envio_id"]))]  # só cliques dos envios do período
+    if cliques.empty and desde is not None:  # coluna de data ausente/vazia nos cliques: nunca esconder cliques por isso
+        cliques = pd.DataFrame(repo.listar_cliques(_sb))
     total = int((envios["status"] == "enviado").sum()) if not envios.empty else 0
     return cliques, envios, total
+
+
+def _chamar_quem_clicou(sb, classificados, envios, descadastrados):
+    """Quem clicou (pessoa) -> telefone da planilha -> link do WhatsApp com a mensagem pronta."""
+    st.markdown("##### 📲 Chamar no WhatsApp quem clicou")
+    clicaram = contato.quem_clicou(classificados, envios)
+    if clicaram.empty:
+        vazio("Ainda não há clique de pessoa ligado a um envio deste período (tente o período 'Tudo').")
+        return
+    st.caption("Cada linha é um cliente que clicou no e-mail (cliques de robôs ficam de fora). Clique em **💬 Enviar** para abrir "
+               "a conversa no seu WhatsApp com a mensagem pronta. Quem pediu para sair não aparece.")
+    mensagem = st.text_area("Mensagem (use {cliente}, {protocolo} e {empresa})",
+                            value=contato.MENSAGEM_PADRAO, height=110, key="msg_clicou")
+    arquivo = st.file_uploader("Telefones de campanhas antigas: anexe a planilha original (opcional)",
+                               type=["xlsx", "xls", "csv", "txt"], key="planilha_telefones",
+                               help="Campanhas enviadas pela Fila a partir de agora já guardam o telefone sozinhas.")
+    fontes = []
+    try:
+        fontes.append(contato.telefones_da_fila(sb, clicaram["protocolo"]))
+    except Exception as erro:  # noqa: BLE001
+        st.caption(f"Não consegui ler os telefones guardados na fila: {erro}")
+    if arquivo:
+        try:
+            df = planilha.limpar_dataframe(planilha.carregar_dataframe(arquivo))
+            mapa = colunas.detectar_colunas(df)
+            if not mapa.get("telefone"):
+                st.warning("Não achei a coluna de telefone nessa planilha (esperado: Telefone, Celular, Fone, WhatsApp...).")
+            fontes.append(contato.telefones_da_planilha(df, mapa))
+        except Exception as erro:  # noqa: BLE001
+            st.error(f"Erro ao ler a planilha: {erro}")
+    tabela, r = contato.montar_tabela(clicaram, fontes, descadastrados, mensagem, cfg("EMPRESA_NOME"))
+    metricas([("🙋 Clicaram (pessoas)", r["clicaram"]), ("💬 Com WhatsApp", r["com_whatsapp"]),
+              ("📵 Sem celular/telefone", r["sem_telefone"]), ("🚫 Pediram para sair", r["descadastrados"])])
+    if r["sem_telefone"] and not arquivo:
+        st.info("Os que estão **sem telefone** vêm de campanhas antigas: anexe acima a planilha original e eu cruzo pelo protocolo.")
+    so_com = st.checkbox("Mostrar só quem tem WhatsApp", value=True, key="so_com_whats")
+    vitrine = tabela[tabela["WhatsApp"] != ""] if so_com else tabela
+    st.dataframe(vitrine, hide_index=True, use_container_width=True,
+                 column_config={"WhatsApp": st.column_config.LinkColumn("WhatsApp", display_text="💬 Enviar")})
+    baixar_excel("📊 Baixar lista com links (.xlsx)", gerar_excel({"Quem clicou": tabela}),
+                 f"quem_clicou_{agora_br():%Y%m%d_%H%M}.xlsx", chave="baixar_quem_clicou")
 
 
 def _pagina_cliques(sb):
@@ -677,6 +718,7 @@ def _pagina_cliques(sb):
                      "desempenho_por_modelo.xlsx", chave="baixar_por_modelo")
     if cliques.empty:
         return
+    _chamar_quem_clicou(sb, classificados, envios, sair)
     with st.expander("🔍 Ver detalhes dos cliques"):
         st.dataframe(classificados, hide_index=True, use_container_width=True)
 

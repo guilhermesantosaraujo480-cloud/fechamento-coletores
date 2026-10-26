@@ -66,6 +66,7 @@ disparador/                 E-mails (só ui.py usa Streamlit)
   fila.py, worker.py        Fila no banco + trabalhador (GitHub Actions); gatilho.py acorda o trabalhador na hora
   repositorio.py            Acesso ao banco do disparador (ja_enviados aceita só os protocolos da campanha)
   metricas.py               Cliques: pessoa x robô; desempenho por modelo
+  contato.py                Quem clicou -> telefone (fila ou planilha) -> link de WhatsApp com mensagem pronta
   ia.py                     Gemini grátis: só RASCUNHOS (humano aprova)
 
 rotas/                      Planilha da operadora -> rota por coletor -> WhatsApp (perfis, nomes, avisos, distribuição, acompanhamento)
@@ -104,17 +105,18 @@ tests/                      Testes automáticos (fakes de Streamlit e Supabase e
 4. **Aparelhos acrescentados:** `quantidade` e `valor_total` guardam o **total pago**; `qtd_acrescimo` é só controle do
    administrador. Aparece **apenas** na Visão geral e em Coletas. **Nunca** no Fechamento, no extrato do coletor nem no Excel.
 5. **Toda gravação chama `dados.invalidar()`** (senão as telas mostram dado velho por até 30 s).
-6. **Não reenviar e-mail:** a triagem pula quem já está em `envios_email` (status enviado), descadastrados, inválidos e
+6. **Contato por WhatsApp só com quem clicou (pessoa), nunca com descadastrado**; sem telefone celular válido não há link.
+7. **Não reenviar e-mail:** a triagem pula quem já está em `envios_email` (status enviado), descadastrados, inválidos e
    duplicados. `ja_enviados` filtrado por protocolo é equivalente ao completo; com protocolo vazio/estranho lê tudo.
-7. **A IA só gera rascunho** de modelo. Nenhum modelo inventa multa, prazo ou ameaça; `VALOR_MULTA` só entra se configurado.
-8. **Um trabalhador por vez** na fila (reserva `lease_ate` + `concurrency` no workflow). Envio interrompido volta para a fila.
-9. **Bipagem:** o ponto `.` só é acrescentado ao serial quando a plataforma recusa por duplicidade (até 6 pontos); só avança o
+8. **A IA só gera rascunho** de modelo. Nenhum modelo inventa multa, prazo ou ameaça; `VALOR_MULTA` só entra se configurado.
+9. **Um trabalhador por vez** na fila (reserva `lease_ate` + `concurrency` no workflow). Envio interrompido volta para a fila.
+10. **Bipagem:** o ponto `.` só é acrescentado ao serial quando a plataforma recusa por duplicidade (até 6 pontos); só avança o
    serial quando a plataforma aceita; depois de gravar dados parciais a OS vira "verificar" (nunca repete sozinha).
-10. **Fotos nunca públicas:** guardar só o **caminho**; mostrar por link assinado temporário. Fotos novas têm nome `*_m.jpg`
+11. **Fotos nunca públicas:** guardar só o **caminho**; mostrar por link assinado temporário. Fotos novas têm nome `*_m.jpg`
     (com miniatura `*_t.jpg`); fotos antigas continuam funcionando sem miniatura.
-11. **Segredos nunca no GitHub** (`.gitignore` bloqueia `secrets.toml` e `.env`).
-12. **Arquivos nunca vazios:** `python verificar_projeto.py` e o GitHub conferem. Use "Upload files", não copie e cole.
-13. **Mudança nova = aditiva + teste.** Telas que já funcionam não são reescritas sem pedido.
+12. **Segredos nunca no GitHub** (`.gitignore` bloqueia `secrets.toml` e `.env`).
+13. **Arquivos nunca vazios:** `python verificar_projeto.py` e o GitHub conferem. Use "Upload files", não copie e cole.
+14. **Mudança nova = aditiva + teste.** Telas que já funcionam não são reescritas sem pedido.
 
 ---
 
@@ -175,6 +177,12 @@ proporcional. Tom 🟢 suave / 🟡 neutro / 🔴 firme (só muda a forma de ped
 
 **Segundo plano:** `campanhas` + `campanha_destinos`; o trabalhador roda a cada 30 min e na hora quando o app o aciona.
 Pausar, retomar, cancelar, reenviar erros. Se o limite diário acabar, continua no dia seguinte.
+
+**Chamar no WhatsApp quem clicou (📈 Cliques):** lista os clientes que clicaram (só **pessoas**, não robôs) com nome, protocolo (OS),
+telefone e um link **💬 Enviar** que abre a conversa com a mensagem pronta e editável (`{cliente}`, `{protocolo}`, `{empresa}`).
+O telefone vem da coluna Telefone/Celular da planilha: campanhas enviadas **pela Fila** o guardam em
+`campanha_destinos.dados.telefone`; para campanhas antigas ou enviadas "agora, na tela", anexe a planilha original na própria
+tela e o cruzamento é feito por protocolo + e-mail. Quem pediu para sair nunca aparece e telefone fixo não gera link.
 
 **Plano futuro:** domínio `@rllogisticareversa.com.br` (3 a 5 caixas, subdomínio de campanha, SPF/DKIM/DMARC, aquecimento),
 exigindo adaptar o SMTP (hoje Gmail) para qualquer provedor.
@@ -287,6 +295,8 @@ enxerga problemas de aparência; teste visualmente no navegador e no celular ap�
 9. **Blindagem de arquivos:** `verificar_projeto.py`, `MANIFESTO.json`, workflow *Verificar arquivos*, pacote só com o que mudou.
 10. **Desempenho e custo:** miniaturas, foto com pouca memória, importação sob demanda, consultas enxutas, cache, índices
     (`migracao_v6.sql`), limpeza opcional, câmera leve opcional, ping opcional, CSS de celular, este README.
+11. **Correção da aba Cliques** (o filtro por período escondia cliques) e **lista "Chamar no WhatsApp quem clicou"**
+    (coluna de telefone reconhecida na planilha, link `wa.me` com mensagem pronta).
 
 ---
 

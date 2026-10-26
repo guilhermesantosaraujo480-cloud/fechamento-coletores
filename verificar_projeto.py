@@ -47,6 +47,7 @@ ESSENCIAIS = {
     "bipagem/reintegra.py": (2000, ["selenium"]),
     "disparador/worker.py": (3000, ["def processar_campanha"]),
     "disparador/variacoes.py": (2000, ["def atribuir"]),
+    "disparador/contato.py": (2000, ["def quem_clicou"]),
     "disparador/ui.py": (10000, ["def renderizar_disparador"]),
     "core/financeiro.py": (3000, ["def calcular_fechamento"]),
 }

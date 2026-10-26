@@ -518,3 +518,30 @@ class TestDisparoMisto(Base):
         ST.respostas["nav_email"] = "📈 Cliques"
         ui.renderizar_disparador(sb)
         self.assertFalse([a for a in ST.avisos if a[0] == "error"], ST.avisos)
+
+    def test_cliques_nao_somem_quando_nao_batem_com_o_periodo(self):
+        """Clique sem data, de envio fora do período ou de e-mail de teste continua aparecendo (como antes do filtro por período)."""
+        from disparador import ui
+        sb = banco()
+        sb.tabelas["cliques_email"] = [
+            {"id": 1, "envio_id": "e1"},                                                   # sem data
+            {"id": 2, "envio_id": "teste-1", "data_hora": "2026-01-01T10:00:00+00:00"},    # antigo e de teste
+        ]
+        for dias in (30, 90, 0):
+            cliques, _, _ = ui._dados_cliques(sb, dias)
+            self.assertEqual(len(cliques), 2, dias)
+
+    def test_cliques_mostra_lista_para_chamar_no_whatsapp(self):
+        from disparador import ui
+        sb = banco()
+        sb.tabelas["envios_email"][0].update({"protocolo": "1", "email": "a@b.com", "nome": "Ana Souza"})
+        sb.tabelas["campanha_destinos"] = [{"id": 1, "campanha_id": 1, "ordem": 0, "protocolo": "1", "email": "a@b.com",
+                                            "status": "enviado", "dados": {"telefone": "11987654321"}}]
+        ST.respostas["nav_email"] = "📈 Cliques"
+        ST.respostas["periodo_cliques"] = "Tudo"
+        ui.renderizar_disparador(sb)
+        self.assertFalse([a for a in ST.avisos if a[0] == "error"], ST.avisos)
+        cliques, envios, _ = ui._dados_cliques(sb, 0)
+        from disparador import contato, metricas
+        q = contato.quem_clicou(metricas.classificar_cliques(cliques, envios), envios)
+        self.assertEqual(list(q["protocolo"]), ["1"])

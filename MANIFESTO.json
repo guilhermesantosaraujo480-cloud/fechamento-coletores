@@ -32,8 +32,8 @@
   "sha256": "aa3bf6ddb35940a6f7abe4791d2321de0efd53708aabb3e2cc6744fe1de5e0d2"
  },
  "README.md": {
-  "bytes": 21079,
-  "sha256": "d936461358d905a3c817cf3056f1373734d3ccbbf3c9f06070a51d3e81c57725"
+  "bytes": 22142,
+  "sha256": "515621a4688f90eafa57ec2f4b8467e9a37608cfa8da9b14fb8a549e5d37f443"
  },
  "app.py": {
   "bytes": 4216,
@@ -124,8 +124,12 @@
   "sha256": "4d16df57f4fa6c0cf435679eb8e29be3592c52ee558923e049fa352f6e7da019"
  },
  "disparador/colunas.py": {
-  "bytes": 2524,
-  "sha256": "6331f5f8fb1e8a4f378290951d81005aadedcbdb4bed458f9b858edc63ec56d3"
+  "bytes": 2838,
+  "sha256": "7906af055cd674d77cac601a8453ff52a5699e7970e344221f98180ad3c23d8c"
+ },
+ "disparador/contato.py": {
+  "bytes": 5140,
+  "sha256": "fb1840542708ed04f13aab0cec11fa35b13bdf343fc094f8f868f756b6461503"
  },
  "disparador/crypto.py": {
   "bytes": 1331,
@@ -164,8 +168,8 @@
   "sha256": "e62be54fa492cc81c3d4d3243b36ccd1ba0ff3dbd889f782f1ef5bfbe87a806c"
  },
  "disparador/ui.py": {
-  "bytes": 36773,
-  "sha256": "dd2efb8e8f38b8bc1b0f96f0bd68d104751a7843621100645da0e023c9b02a02"
+  "bytes": 39742,
+  "sha256": "7d089c50c02d08c266018cf86ac3739cbe860d37dba6a9c42df51b1a6e7a28e8"
  },
  "disparador/utils.py": {
   "bytes": 916,
@@ -316,12 +320,12 @@
   "sha256": "d3e4e650fabd5ea7bdd458be8d800f77a127aab23d1399869aae3cd49eaae50b"
  },
  "tests/test_ui_smoke.py": {
-  "bytes": 24623,
-  "sha256": "3bf5bfdc3cf20012cd80538b736d95c9d7c4095d575b60f3026d63be5b31c05b"
+  "bytes": 26200,
+  "sha256": "36c13f5ea899042b204bfaadf11a40dc2734804002117939d8a213a9c1db3139"
  },
  "tests/test_variacoes.py": {
-  "bytes": 10393,
-  "sha256": "38915ae154487215ac099a3b95dfc1bc7130f3445356b955981718e2cec90207"
+  "bytes": 14199,
+  "sha256": "2d53c8e45ea576bdb3d158641db8827617869e0e2b45b18e26a6b5b499cab0fb"
  },
  "ui/__init__.py": {
   "bytes": 88,
@@ -416,7 +420,7 @@
   "sha256": "44d4a0bd62ad84fd6de288e121549c408024d5de6e96538446055fc3ccd59b19"
  },
  "verificar_projeto.py": {
-  "bytes": 6835,
-  "sha256": "a02b4672b7cf95d755d6da0c2cd21e6c1d142c1404de87ee26bd184ba667e963"
+  "bytes": 6893,
+  "sha256": "00d795c1aa153d5445f0e777ebc1b1d20ef44e35699665050208d0b43959d3a2"
  }
 }
