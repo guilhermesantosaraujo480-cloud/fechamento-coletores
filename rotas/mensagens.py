@@ -25,8 +25,12 @@ def mensagem_rota(empresa, coletor, data, can):
     bairros = resumo_bairros(can)
     linhas = [f"• {b}: {n}" for b, n in bairros.items()]
     destaque = av.linha_resumo(av.contagem(can)) if "avisos" in can else ""
+    chips = ""
+    if "itens" in can and (can["itens"] != "").any():  # empresas de chip: quantos HLR e quantos NAKED o coletor leva
+        cont = can["itens"].value_counts()
+        chips = "💳 " + " · ".join(f"*{tipo}*: {n}" for tipo, n in cont.items() if tipo) + "\n"
     cabecalho = (f"🚚 *ROTA {empresa.upper()}*\n📅 {data_br(data)}\n👷 *{coletor}*\n"
-                 f"📦 *{len(can)}* coleta(s)\n" + (f"{destaque}\n" if destaque else "") + "\n📍 *Por bairro:*\n")
+                 f"📦 *{len(can)}* coleta(s)\n" + chips + (f"{destaque}\n" if destaque else "") + "\n📍 *Por bairro:*\n")
     rodape = "\n\n📎 Planilha completa com endereços, telefones e links do mapa no arquivo."
     texto = cabecalho + "\n".join(linhas) + rodape
     while len(texto) > LIMITE_LEGENDA and len(linhas) > 3:

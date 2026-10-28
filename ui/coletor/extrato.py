@@ -4,7 +4,7 @@ import streamlit as st
 from core import dados, sessao
 from core import financeiro as fin
 from core.utils import PERIODOS, brl, data_br, hoje_br, periodo_por_nome
-from ui.componentes import cabecalho, cartao, erro_banco, metricas, mostrar_foto, navegacao, vazio
+from ui.componentes import cabecalho, erro_banco, metricas, mostrar_foto, navegacao, vazio
 
 ROTULO_STATUS = {"Aprovado": "🟢 Aprovada", "Pendente": "🟡 Aguardando aprovação", "Recusado": "🔴 Recusada"}
 

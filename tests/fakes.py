@@ -93,7 +93,8 @@ class Consulta:
         if self.op == "upsert":
             novas = self.payload if isinstance(self.payload, list) else [self.payload]
             for n in novas:
-                existente = next((r for r in tabela if r.get(self._conflito) == n.get(self._conflito)), None)
+                chaves = [c.strip() for c in str(self._conflito).split(",")]  # aceita chave composta, como o PostgREST
+                existente = next((r for r in tabela if all(r.get(c) == n.get(c) for c in chaves)), None)
                 if existente:
                     existente.update(n)
                 else:
@@ -245,6 +246,8 @@ class FakeSt(types.ModuleType):
 
     def date_input(self, rotulo, value=None, *a, key=None, **k):
         return self._resp(key or rotulo, value)
+
+    time_input = date_input
 
     def selectbox(self, rotulo, opcoes=(), index=0, *a, key=None, **k):
         opcoes = list(opcoes)

@@ -6,7 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from bipagem import extracao, fila
-from bipagem.regras import EQUIPAMENTOS, pontos
+from bipagem.regras import EQUIPAMENTOS
 from core import auditoria, sessao
 from core.exportacao import gerar_excel
 from ui.componentes import baixar_excel, cabecalho, cartao, confirmar, metricas, navegacao, vazio

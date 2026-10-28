@@ -5,6 +5,27 @@ CAMPOS = {
     "id": "Protocolo / pedido (BA)", "conta": "Conta", "nome": "Nome do cliente", "endereco": "Endereço (rua)",
     "numero": "Número", "bairro": "Bairro", "cep": "CEP", "cidade": "Cidade", "uf": "UF",
     "telefone": "Telefone 1", "telefone2": "Telefone 2 / Celular", "complemento": "Complemento / informação",
+    # Campos opcionais (empresas de entrega de chip, como a Toolbox). Ficam no fim: os perfis antigos não os usam.
+    "cpf": "CPF/CNPJ do cliente", "pais": "País", "itens": "Descrição dos itens (ex.: HLR / NAKED)",
+}
+
+# Nomes que costumam aparecer nas planilhas de cada campo (sugestão automática na tela "Cadastrar nova empresa").
+APELIDOS_COLUNA = {
+    "id": ["pedido", "numero do pedido", "ba", "protocolo", "id", "os"],
+    "conta": ["conta"],
+    "nome": ["nome", "cliente", "nome do cliente"],
+    "endereco": ["logradouro", "endereco", "rua"],
+    "numero": ["numero", "num", "n"],
+    "bairro": ["bairro"],
+    "cep": ["cep"],
+    "cidade": ["cidade", "municipio"],
+    "uf": ["uf", "estado"],
+    "telefone": ["telefone", "telefone 1", "fone", "tel"],
+    "telefone2": ["celular", "telefone 2", "whatsapp"],
+    "complemento": ["complemento", "informacao adicional", "referencia"],
+    "cpf": ["cpf/cnpj", "cpf cnpj", "cpf", "cnpj"],
+    "pais": ["pais"],
+    "itens": ["descricao dos itens", "itens", "produto"],
 }
 
 
@@ -20,6 +41,28 @@ EXTRAS = {
 
 def _n(texto):
     return str(texto).strip().lower()
+
+
+def _chave_coluna(nome):
+    """'Destino - Informação adicional' -> ('informacao adicional', 0). O 2º valor é a prioridade do prefixo:
+    Destino (0) vence sem prefixo (1), que vence Origem (2) — a rota vai para onde o equipamento/chip VAI."""
+    import re
+    import unicodedata
+    sem = unicodedata.normalize("NFKD", str(nome)).encode("ascii", "ignore").decode().lower().strip()
+    m = re.match(r"^(destino|origem)\s*-\s*(.+)$", sem)
+    if m:
+        return m.group(2).strip(), 0 if m.group(1) == "destino" else 2
+    return re.sub(r"\s+", " ", sem), 1
+
+
+def sugerir_coluna(campo, colunas):
+    """Coluna da planilha que melhor combina com o campo (None se nenhuma). Ignora prefixos 'Destino - ' / 'Origem - '."""
+    candidatas = [(_chave_coluna(c), c) for c in colunas]
+    for apelido in APELIDOS_COLUNA.get(campo, [campo]):
+        achadas = sorted((prio, c) for (chave, prio), c in candidatas if chave == apelido)
+        if achadas:
+            return achadas[0][1]
+    return None
 
 
 @dataclass
@@ -67,7 +110,24 @@ TIM_CSS = Perfil(
             "ocorrencia": "Descrição da Ocorrência"},
 )
 
-PERFIS_PADRAO = [REINTEGRA, TIM_CSS]
+# Toolbox (TIM Blue Chip): entrega de CHIPS. A planilha vem do sistema com colunas "Destino - ...", e o arquivo de saída segue o
+# modelo ROTA_TIM.xlsx (números sem pontuação, cidade em maiúsculas, tipo do chip HLR/NAKED no fim).
+TOOLBOX = Perfil(
+    nome="Toolbox (chips)", sufixo="EMPRESA TOOLBOX", padrao=True,
+    mapa={"id": "Pedido", "nome": "Destino - Nome", "endereco": "Destino - Logradouro", "numero": "Destino - Número",
+          "bairro": "Destino - Bairro", "cep": "Destino - CEP", "cidade": "Destino - Cidade", "uf": "Destino - UF",
+          "telefone": "Destino - Telefone", "telefone2": "Destino - Celular", "complemento": "Destino - Informação adicional",
+          "cpf": "Destino - CPF/CNPJ", "pais": "Destino - País", "itens": "Descrição dos itens"},
+    saida=[("Pedido", "id"), ("Destino - Nome", "nome"), ("Destino - CPF/CNPJ", "cpf"), ("Destino - Celular", "celular_num"),
+           ("Endereço Completo", "endereco_completo"), ("Destino - Bairro", "bairro"), ("Destino - Cidade", "cidade_up"),
+           ("Destino - CEP", "cep_num"), ("Destino - UF", "uf"), ("Destino - País", "pais"),
+           ("Destino - Informação adicional", "complemento"), ("Descrição dos itens", "itens")],
+    assinatura=["Pedido", "Destino - Nome", "Destino - Logradouro", "Descrição dos itens"],
+    extras={"tipo_os": "Tipo", "status_agenda": "Status de Agendamento", "agenda": "Agendamento para até",
+            "coletor": "Transportador", "tentativas": "Tentativas", "prioridade": "Prioridade"},
+)
+
+PERFIS_PADRAO = [REINTEGRA, TIM_CSS, TOOLBOX]
 
 
 def detectar_perfil(colunas, perfis):

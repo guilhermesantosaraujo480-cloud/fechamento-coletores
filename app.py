@@ -6,6 +6,12 @@ st.set_page_config(page_title="Sistema Vivo Coletas", page_icon="📱", layout="
 import importlib  # noqa: E402
 import time as _time  # noqa: E402
 
+try:  # versões novas do Streamlit: traduz use_container_width -> width (nada muda se a versão ainda aceita)
+    from core import compat as _compat  # noqa: E402
+    _compat.instalar(st)
+except Exception:  # noqa: BLE001 — compatibilidade nunca pode derrubar o app
+    pass
+
 from streamlit_cookies_controller import CookieController  # noqa: E402
 
 from core import dados, sessao  # noqa: E402

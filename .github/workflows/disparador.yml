@@ -1,5 +1,6 @@
 # Trabalhador do disparo de e-mails em segundo plano.
-# Roda a cada 30 min (e na hora, quando o app aciona). Se não há nada na fila, termina em segundos.
+# Roda a cada 30 min (e na hora, quando o app aciona). Se não há nada na fila (e-mail ou SMS), termina em segundos.
+# O SMS usa este mesmo agendamento (não gasta minutos extras do GitHub); sms.yml serve só para acionar o SMS na hora.
 name: Disparador em segundo plano
 
 on:
@@ -19,7 +20,7 @@ permissions:
 jobs:
   enviar:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - name: Tem campanha na fila?
         id: checar
@@ -32,18 +33,29 @@ jobs:
           echo "resposta: ${resp:0:120}"
           if [ "$resp" = "[]" ]; then echo "trabalho=nao" >> "$GITHUB_OUTPUT"; else echo "trabalho=sim" >> "$GITHUB_OUTPUT"; fi
 
+      - name: Tem SMS na fila?
+        id: checar_sms
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          resp=$(curl -s --max-time 20 "$SUPABASE_URL/rest/v1/sms_campanhas?select=id&status=in.(pendente,rodando)&limit=1" \
+            -H "apikey: $SUPABASE_KEY" -H "Authorization: Bearer $SUPABASE_KEY" || echo "erro")
+          echo "resposta SMS: ${resp:0:120}"
+          if echo "$resp" | grep -q '"id"'; then echo "trabalho=sim" >> "$GITHUB_OUTPUT"; else echo "trabalho=nao" >> "$GITHUB_OUTPUT"; fi
+
       - uses: actions/checkout@v4
-        if: steps.checar.outputs.trabalho == 'sim'
+        if: steps.checar.outputs.trabalho == 'sim' || steps.checar_sms.outputs.trabalho == 'sim'
 
       - uses: actions/setup-python@v5
-        if: steps.checar.outputs.trabalho == 'sim'
+        if: steps.checar.outputs.trabalho == 'sim' || steps.checar_sms.outputs.trabalho == 'sim'
         with:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: requirements-worker.txt
 
       - name: Instalar dependências
-        if: steps.checar.outputs.trabalho == 'sim'
+        if: steps.checar.outputs.trabalho == 'sim' || steps.checar_sms.outputs.trabalho == 'sim'
         run: pip install -r requirements-worker.txt
 
       - name: Enviar a fila
@@ -55,3 +67,13 @@ jobs:
           MAX_MINUTOS: "14"
           GITHUB_TOKEN: ${{ github.token }}
         run: python -m disparador.worker
+
+      - name: Enviar a fila de SMS
+        if: ${{ !cancelled() && steps.checar_sms.outputs.trabalho == 'sim' }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          CHAVE_CRIPTO: ${{ secrets.CHAVE_CRIPTO }}
+          MAX_MINUTOS: "14"
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python -m disparador.sms_worker

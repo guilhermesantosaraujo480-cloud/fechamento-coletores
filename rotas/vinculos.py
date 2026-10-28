@@ -32,3 +32,24 @@ def sugerir_vinculos(coletores_rota, usuarios, minimo=0.6):
             usados_c.add(cid)
             usados_u.add(uid)
     return saida
+
+
+def telefone_do_coletor(coletores_rota, usuarios, nome_completo):
+    """Telefone (só dígitos) cadastrado em Rotas → Coletores para o coletor do Fechamento (que é identificado pelo nome completo).
+    Ordem: 1) coletor de rota ligado ao login com esse nome; 2) mesmo nome; 3) mesmo primeiro nome, se só houver UM. '' se não achar."""
+    alvo = _norm(nome_completo)
+    if not alvo:
+        return ""
+    com_telefone = [c for c in coletores_rota if re.sub(r"\D", "", str(c.get("telefone") or ""))]
+
+    def fone(c):
+        return re.sub(r"\D", "", str(c.get("telefone") or ""))
+    ids = {u["id"] for u in usuarios if _norm(u.get("nome_completo")) == alvo}
+    for c in com_telefone:
+        if c.get("usuario_id") in ids:
+            return fone(c)
+    for c in com_telefone:
+        if _norm(c.get("nome_rota")) == alvo:
+            return fone(c)
+    primeiro = [c for c in com_telefone if _norm(c.get("nome_rota")).split()[:1] == alvo.split()[:1]]
+    return fone(primeiro[0]) if len(primeiro) == 1 else ""

@@ -28,13 +28,28 @@ def _em(segundos):
 
 
 # ----------------------------------------------------------------------------- criar
-def criar_campanha(sb, usuario, nome, modelo_nome, modelo, ctx, delay_min, delay_max, permitir_reenvio, registros):
-    """registros: lista de dicts (colunas.registro_da_linha). Repetidos na mesma planilha entram já como 'ignorado'."""
-    camp = sb.table("campanhas").insert({
+def esta_agendada(c, agora=None):
+    """True se a campanha ainda espera a hora marcada para começar (coluna `agendada_para`, migracao_v7.sql)."""
+    quando = c.get("agendada_para")
+    return bool(quando) and str(quando) > (agora or datetime.now(timezone.utc)).isoformat()
+
+
+def rotulo(c):
+    return "🕘 Agendada" if c.get("status") == "pendente" and esta_agendada(c) else ROTULO.get(c.get("status"), c.get("status"))
+
+
+def criar_campanha(sb, usuario, nome, modelo_nome, modelo, ctx, delay_min, delay_max, permitir_reenvio, registros,
+                   agendada_para=None):
+    """registros: lista de dicts (colunas.registro_da_linha). Repetidos na mesma planilha entram já como 'ignorado'.
+    agendada_para: datetime com fuso (só começa depois dessa hora; precisa da coluna criada pela migracao_v7.sql)."""
+    campos = {
         "nome": nome.strip() or modelo_nome, "status": "pendente", "criado_por": usuario, "modelo_nome": modelo_nome,
         "modelo": modelo, "ctx": ctx, "delay_min": float(delay_min), "delay_max": float(delay_max),
         "permitir_reenvio": bool(permitir_reenvio), "total": len(registros), "atualizado_em": agora_iso(),
-    }).execute().data[0]
+    }
+    if agendada_para:
+        campos["agendada_para"] = agendada_para.astimezone(timezone.utc).isoformat()
+    camp = sb.table("campanhas").insert(campos).execute().data[0]
     _completar(camp)
     vistos, linhas = set(), []
     # campanha com vários modelos: cada linha já nasce com o modelo sorteado (fica em dados["_variante"])
@@ -131,9 +146,10 @@ def recolocar_erros(sb, camp_id):
 
 
 # ------------------------------------------------------------------------- trabalhador
-def candidatas(sb):
-    """Campanhas que o trabalhador deve olhar agora (na ordem de criação)."""
-    return sb.table("campanhas").select("*").in_("status", list(STATUS_ATIVOS)).order("id").execute().data or []
+def candidatas(sb, agora=None):
+    """Campanhas que o trabalhador deve olhar agora (na ordem de criação); as agendadas esperam a hora marcada."""
+    todas = sb.table("campanhas").select("*").in_("status", list(STATUS_ATIVOS)).order("id").execute().data or []
+    return [c for c in todas if not esta_agendada(c, agora)]
 
 
 def reservar(sb, camp, segundos=180):

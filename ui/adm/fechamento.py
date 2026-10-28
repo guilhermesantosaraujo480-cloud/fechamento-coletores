@@ -1,10 +1,15 @@
 """Fechamento: resumo por coletor, recibo pronto para copiar e exportação para Excel."""
+import urllib.parse
+
 import streamlit as st
 
 from core import dados
 from core import financeiro as fin
 from core.exportacao import gerar_excel
 from core.utils import agora_br, brl, data_br
+from rotas import processamento as rota_pr
+from rotas import repositorio as rota_repo
+from rotas import vinculos
 from ui.componentes import baixar_excel, cabecalho, cartao, erro_banco, metricas, vazio
 
 
@@ -23,6 +28,22 @@ def _abas_excel(resumo, coletas, vales, premios):
         "Premiações": p.rename(columns={"data": "Data", "coletor": "Coletor", "valor_premiacao": "Valor (R$)",
                                         "descricao": "Motivo"}),
     }
+
+
+def _botao_whatsapp(sb, coletor, recibo):
+    """Um toque: abre o WhatsApp do coletor com o fechamento escrito (telefone de Rotas → Coletores).
+    O recibo é o mesmo texto de acima, que nunca traz os aparelhos acrescentados (regra do sistema)."""
+    try:
+        usuarios, _ = dados.listar_usuarios(sb)
+        fone = vinculos.telefone_do_coletor(rota_repo.listar_coletores(sb), usuarios, coletor)
+    except Exception:  # noqa: BLE001 — sem a tabela de rotas o recibo continua funcionando
+        fone = ""
+    numero = rota_pr.numero_whatsapp(fone)
+    if numero:
+        st.link_button("📲 Enviar fechamento ao coletor (WhatsApp)", f"https://wa.me/{numero}?text={urllib.parse.quote(recibo)}",
+                       use_container_width=True)
+    else:
+        st.caption("📵 Sem telefone cadastrado para este coletor. Cadastre em **Rotas → Coletores** para enviar com um toque.")
 
 
 def render(sb, filtro):
@@ -76,4 +97,6 @@ def render(sb, filtro):
             if filtro.coletor == "Todos":
                 st.caption("Escolha um coletor nos filtros da barra lateral para gerar o recibo dele.")
             else:
-                st.code(fin.texto_recibo(filtro.coletor, filtro.ini, filtro.fim, f, agora_br(), saldos.get(filtro.coletor, 0)), language="text")
+                recibo = fin.texto_recibo(filtro.coletor, filtro.ini, filtro.fim, f, agora_br(), saldos.get(filtro.coletor, 0))
+                st.code(recibo, language="text")
+                _botao_whatsapp(sb, filtro.coletor, recibo)

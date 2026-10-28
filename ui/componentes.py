@@ -1,8 +1,11 @@
 """Peças de interface reutilizáveis."""
+from datetime import datetime, time, timedelta
+
 import streamlit as st
 
 from core import dados
 from core.exportacao import MIME_XLSX
+from core.utils import FUSO_BRASILIA, agora_br
 
 
 def cartao():
@@ -76,3 +79,24 @@ def baixar_excel(rotulo, conteudo, nome_arquivo, chave=None):
 def confirmar(rotulo, chave):
     """Caixa de confirmação para ações em massa. Devolve True se marcada."""
     return st.checkbox(rotulo, key=chave)
+
+
+def escolher_inicio(chave, rotulo="🕘 Começar em horário marcado"):
+    """Widget 'agendar o início' (horário de Brasília). Devolve um datetime com fuso, ou None para começar já.
+    Hora no passado = começar já (mostra um aviso)."""
+    if not st.checkbox(rotulo, key=f"{chave}_agendar"):
+        return None
+    padrao = agora_br() + timedelta(hours=1)
+    a, b = st.columns(2)
+    dia = a.date_input("Dia", value=padrao.date(), key=f"{chave}_dia")
+    hora = b.time_input("Hora (Brasília)", value=time(padrao.hour, 0), key=f"{chave}_hora")
+    try:
+        quando = datetime.combine(dia, hora).replace(tzinfo=FUSO_BRASILIA)
+    except TypeError:
+        return None
+    if quando <= agora_br():
+        st.warning("Esse horário já passou: o envio começará assim que o trabalhador rodar.")
+        return None
+    st.caption(f"Começa em {quando:%d/%m/%Y às %H:%M} (Brasília). O trabalhador confere a hora a cada 30 minutos, "
+               "então pode começar até 30 min depois (a menos que você acione na hora).")
+    return quando

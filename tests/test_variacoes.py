@@ -251,6 +251,10 @@ class TestContatoQuemClicou(unittest.TestCase):
         self.assertIn("100", maria["WhatsApp"])
         self.assertNotIn("Ana", " ".join(tabela["Cliente"]))        # quem saiu não aparece
         self.assertEqual(tabela[tabela["Protocolo"] == "200"].iloc[0]["WhatsApp"], "")  # fixo não tem WhatsApp
+        self.assertEqual(list(tabela.columns), contato.COLUNAS_SAIDA)
+        t2, _ = contato.montar_tabela(q, [fonte], {"ana@x.com"}, contato.MENSAGEM_PADRAO, "Minha Empresa", {"100|maria@x.com"})
+        self.assertEqual(t2[t2["Protocolo"] == "100"].iloc[0]["Chamado"], "✅")
+        self.assertEqual(t2[t2["Protocolo"] == "200"].iloc[0]["Chamado"], "")
 
     def test_telefone_vem_da_fila_e_da_planilha(self):
         from disparador import contato
@@ -272,3 +276,66 @@ class TestContatoQuemClicou(unittest.TestCase):
         from disparador import contato
         self.assertTrue(contato.quem_clicou(pd.DataFrame(), self.envios()).empty)
         self.assertTrue(contato.quem_clicou(self.cliques(), pd.DataFrame()).empty)
+
+
+class TestLigarCliquesAosEnvios(unittest.TestCase):
+    """Clique gravado com identificador diferente do envio_id continua ligado ao e-mail certo."""
+
+    def envios(self):
+        return pd.DataFrame([
+            {"id": 10, "envio_id": "uuid-aaa", "data_hora": "2026-10-20T12:00:00+00:00", "email": "ana@x.com", "protocolo": "111",
+             "nome": "Ana", "modelo": "M1", "status": "enviado"},
+            {"id": 11, "envio_id": "uuid-bbb", "data_hora": "2026-10-20T12:00:00+00:00", "email": "bia@x.com", "protocolo": "222",
+             "nome": "Bia", "modelo": "M2", "status": "enviado"},
+            {"id": 12, "envio_id": "uuid-ccc", "data_hora": "2026-10-20T12:00:00+00:00", "email": "caio@x.com", "protocolo": "333",
+             "nome": "Caio", "modelo": "M2", "status": "enviado"},
+        ])
+
+    def test_liga_por_envio_id_id_protocolo_e_email(self):
+        cliques = pd.DataFrame([
+            {"id": 1, "envio_id": " UUID-AAA ", "data_hora": "2026-10-21T12:00:00+00:00"},                 # maiúscula/espaço
+            {"id": 2, "envio_id": "11", "data_hora": "2026-10-21T12:00:00+00:00"},                          # id numérico do envio
+            {"id": 3, "envio_id": None, "protocolo": "333", "data_hora": "2026-10-21T12:00:00+00:00"},      # só protocolo
+            {"id": 4, "envio_id": "nada", "email": "ana@x.com", "data_hora": "2026-10-21T12:00:00+00:00"},  # só e-mail
+            {"id": 5, "envio_id": "lixo", "data_hora": "2026-10-21T12:00:00+00:00"},                        # não liga
+        ])
+        df, d = metricas.ligar_aos_envios(cliques, self.envios())
+        self.assertEqual(list(df["envio_id"][:4]), ["uuid-aaa", "uuid-bbb", "uuid-ccc", "uuid-aaa"])
+        self.assertEqual(df["envio_id"].iloc[4], "lixo")  # nada some
+        self.assertEqual(d["ligados"], 4)
+        self.assertEqual(d["sem_ligacao"], 1)
+        self.assertEqual(set(d["por_metodo"]), {"envio_id", "id do envio", "protocolo", "e-mail"})
+
+    def test_desempenho_e_lista_funcionam_depois_da_ligacao(self):
+        cliques = pd.DataFrame([{"id": 2, "envio_id": "11", "data_hora": "2026-10-22T12:00:00+00:00"}])
+        df, _ = metricas.ligar_aos_envios(cliques, self.envios())
+        c = metricas.classificar_cliques(df, self.envios())
+        r = metricas.desempenho_por_modelo(self.envios(), c).set_index("Modelo")
+        self.assertEqual(r.loc["M2", "Clicaram (pessoas)"], 1)
+        from disparador import contato
+        q = contato.quem_clicou(c, self.envios())
+        self.assertEqual(list(q["protocolo"]), ["222"])
+
+    def test_sem_dados_nao_quebra(self):
+        d0, d = metricas.ligar_aos_envios(pd.DataFrame(), self.envios())
+        self.assertTrue(d0.empty)
+        df, d = metricas.ligar_aos_envios(pd.DataFrame([{"envio_id": "x"}]), pd.DataFrame())
+        self.assertEqual(d["sem_ligacao"], 1)
+
+
+class TestJaChamado(unittest.TestCase):
+    def test_marcar_listar_desmarcar(self):
+        from disparador import repositorio as repo
+        sb = fakes.FakeSupabase()
+        self.assertEqual(repo.marcar_chamados(sb, [("100", "Maria@X.com"), ("200", "j@x.com")], "adm"), 2)
+        self.assertEqual(repo.chamados(sb), {"100|maria@x.com", "200|j@x.com"})
+        repo.marcar_chamados(sb, [("100", "maria@x.com")], "adm")  # de novo: não duplica
+        self.assertEqual(len(sb.tabelas["cliques_chamados"]), 2)
+        repo.desmarcar_chamado(sb, "100", "MARIA@x.com")
+        self.assertEqual(repo.chamados(sb), {"200|j@x.com"})
+
+    def test_sem_a_tabela_nao_quebra(self):
+        from disparador import repositorio as repo
+        sb = fakes.FakeSupabase()
+        sb.falhar_em = {"cliques_chamados"}
+        self.assertEqual(repo.chamados(sb), set())

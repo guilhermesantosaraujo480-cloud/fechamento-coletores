@@ -145,3 +145,20 @@ def limpar_snapshots_antigos(sb, dias=60):
         sb.table("rota_snapshots").delete().lt("data", corte).execute()
     except Exception:
         pass
+
+
+# ----------------------------------------------------------- mensagens prontas do WhatsApp (migracao_v7.sql)
+def listar_mensagens(sb):
+    """Mensagens salvas pelo administrador [{id, nome, texto}]. Sem a tabela, devolve vazio (as prontas do sistema continuam)."""
+    try:
+        return sb.table("mensagens_rota").select("id,nome,texto").order("id").execute().data or []
+    except Exception:
+        return []
+
+
+def salvar_mensagem(sb, nome, texto):
+    sb.table("mensagens_rota").insert({"nome": nome.strip(), "texto": texto.strip()}).execute()
+
+
+def remover_mensagem(sb, mensagem_id):
+    sb.table("mensagens_rota").delete().eq("id", mensagem_id).execute()

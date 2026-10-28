@@ -5,7 +5,9 @@ import re
 import requests
 
 BASE = "https://generativelanguage.googleapis.com/v1beta"
-MODELO_PADRAO = "gemini-2.0-flash"
+# "gemini-flash-latest" aponta sempre para o Flash mais novo (o gemini-2.0-flash foi desligado pelo Google em 01/06/2026).
+MODELO_PADRAO = "gemini-flash-latest"
+EXCLUIR_NO_AUTOMATICO = ("lite", "image", "tts", "live", "audio", "embedding", "thinking", "exp", "8b", "vision", "robotics")
 
 
 class ErroIA(RuntimeError):
@@ -39,6 +41,16 @@ def listar_modelos_gemini(chave, http=requests):
     return sorted(nomes)
 
 
+def escolher_modelo_flash(nomes):
+    """Entre os modelos disponíveis, o 'flash' estável de maior versão (None se não houver). Usado quando o nome configurado falha."""
+    def versao(nome):
+        m = re.search(r"(\d+(?:\.\d+)?)", nome)
+        return float(m.group(1)) if m else 0.0
+    candidatos = [n for n in nomes if "flash" in n and not any(x in n for x in EXCLUIR_NO_AUTOMATICO)]
+    estaveis = [n for n in candidatos if "preview" not in n] or candidatos
+    return max(estaveis, key=lambda n: (versao(n), "latest" not in n, n), default=None)
+
+
 def _extrair_json(texto):
     texto = texto.strip()
     texto = re.sub(r"^```(?:json)?\s*|\s*```$", "", texto, flags=re.I)
@@ -68,11 +80,19 @@ def gerar_modelos_ia(chave, modelo, situacao, tom, qtd, http=requests):
         "contents": [{"parts": [{"text": montar_prompt(situacao, tom, qtd)}]}],
         "generationConfig": {"responseMimeType": "application/json", "temperature": 0.8},
     }
-    try:
-        r = http.post(f"{BASE}/models/{modelo or MODELO_PADRAO}:generateContent",
-                      headers=_cabecalho(chave), json=corpo, timeout=60)
-    except requests.RequestException as erro:
-        raise ErroIA(f"Não foi possível falar com a IA: {erro}") from erro
+    def pedir(nome):
+        try:
+            return http.post(f"{BASE}/models/{nome}:generateContent", headers=_cabecalho(chave), json=corpo, timeout=60)
+        except requests.RequestException as erro:
+            raise ErroIA(f"Não foi possível falar com a IA: {erro}") from erro
+    r = pedir(modelo or MODELO_PADRAO)
+    if r.status_code == 404:  # nome de modelo desligado/inexistente: tenta o Flash mais novo que a sua chave enxerga
+        try:
+            alternativo = escolher_modelo_flash(listar_modelos_gemini(chave, http))
+        except (ErroIA, requests.RequestException):
+            alternativo = None
+        if alternativo and alternativo != (modelo or MODELO_PADRAO):
+            r = pedir(alternativo)
     if r.status_code != 200:
         raise ErroIA(_traduzir_http(r))
     try:

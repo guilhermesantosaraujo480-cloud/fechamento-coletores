@@ -8,12 +8,16 @@
   "sha256": "1a1dbe176bc233b499d35a57db7513f2941c99ab9759f177830c9149be99005b"
  },
  ".github/workflows/disparador.yml": {
-  "bytes": 1948,
-  "sha256": "458c4dcd7d99f839a96c8714cbecaa35b59c8241caa69cc2b23846de44447ea0"
+  "bytes": 3215,
+  "sha256": "9429a28ec809e585e55ec0ba48cdb38ff908ae2784d9da965b0c7638f53d8dc7"
  },
  ".github/workflows/manter_ativo.yml": {
   "bytes": 883,
   "sha256": "6b7c045e6fce1a2b7e2243d2424236a8875eaecf2fb4ea81bb5f46812b6665ac"
+ },
+ ".github/workflows/sms.yml": {
+  "bytes": 2014,
+  "sha256": "74fe8557b9ef4a01ee3c9cf4c7f03c76dfca30c3714f2d8899da58891d06abfb"
  },
  ".github/workflows/verificar.yml": {
   "bytes": 619,
@@ -32,12 +36,12 @@
   "sha256": "aa3bf6ddb35940a6f7abe4791d2321de0efd53708aabb3e2cc6744fe1de5e0d2"
  },
  "README.md": {
-  "bytes": 22142,
-  "sha256": "515621a4688f90eafa57ec2f4b8467e9a37608cfa8da9b14fb8a549e5d37f443"
+  "bytes": 42774,
+  "sha256": "547cc1f695fc529d00d71de94402ab9136de9aaf707fcd5ed0463d9e104bed47"
  },
  "app.py": {
-  "bytes": 4216,
-  "sha256": "90ec4e6f7e7099bd6616ac2f3f882a0a09041f33bf2910372d773b245e70474b"
+  "bytes": 4495,
+  "sha256": "24a3749d45eb7c6cabe8b6ca083814dcc3e580a510d69da2ef64bc40a16ac67f"
  },
  "bipagem/__init__.py": {
   "bytes": 342,
@@ -82,6 +86,10 @@
  "core/auth.py": {
   "bytes": 5371,
   "sha256": "d0d8ae4dae6e172100574445399b03cd6b4d371ac40e43d2bde023db005cdec0"
+ },
+ "core/compat.py": {
+  "bytes": 3016,
+  "sha256": "9c1e10f6e387a56b57a185152fe0b79eadc1bc6bfc978d84e9b0a20ed45a459d"
  },
  "core/config.py": {
   "bytes": 654,
@@ -128,8 +136,8 @@
   "sha256": "7906af055cd674d77cac601a8453ff52a5699e7970e344221f98180ad3c23d8c"
  },
  "disparador/contato.py": {
-  "bytes": 5140,
-  "sha256": "fb1840542708ed04f13aab0cec11fa35b13bdf343fc094f8f868f756b6461503"
+  "bytes": 5451,
+  "sha256": "187d79777d66acd01d2e3484c8915ab4cd5b5bf6ea26634f63eee016d9fc08c4"
  },
  "disparador/crypto.py": {
   "bytes": 1331,
@@ -140,36 +148,56 @@
   "sha256": "84eff74e994a0b03a7fd7f1a33b048271cfb57e1199a313c5037f78f3e7b4d27"
  },
  "disparador/fila.py": {
-  "bytes": 9335,
-  "sha256": "3cf1babc4850c7ef39e6d971d5338b1dd88577e4881e5841b959e2a1f104a3bb"
+  "bytes": 10155,
+  "sha256": "c44d235645ec2959953619bb6d13b2fb7ec67b4e3c80d09cb4e87a9740e8a7a2"
  },
  "disparador/gatilho.py": {
-  "bytes": 1785,
-  "sha256": "8014366ea9810e869c7782ded85ab01f488fcd5fbd99dcea844e812dee67cd52"
+  "bytes": 1994,
+  "sha256": "31f5cbdc95b1217ecce0f413856ce8790e44e859b491cd07401661ae66a7ef28"
  },
  "disparador/ia.py": {
-  "bytes": 4857,
-  "sha256": "188e56f01327e8375ec0a4d6b51cc4f60b37d1f3c51544a782880d384dc2a474"
+  "bytes": 6107,
+  "sha256": "c635105c985decbf948c890cbbf2ec2921d3ba4be04da92cb6d71a0680eaaa2a"
  },
  "disparador/metricas.py": {
-  "bytes": 5518,
-  "sha256": "db5f9bcdca05c5647c8cea2416f31adfa3e9aa0b062e9536b926e620373c8149"
+  "bytes": 8854,
+  "sha256": "1c3ca70b12db5250d8c2616029d8bb33ce0f6c2df8d069070a3d6589e93754ff"
  },
  "disparador/planilha.py": {
   "bytes": 3005,
   "sha256": "dab39f921bb269b031160ce893bb25cd7304738c20b4d73eeadce9273a90711b"
  },
  "disparador/repositorio.py": {
-  "bytes": 6800,
-  "sha256": "3b39abaeb602e62d934119d70cd706fcb8c692c1dafd9a4e70618a0dda5ecc66"
+  "bytes": 7925,
+  "sha256": "cfb13dc2b487c18ea616a72a65901abdfcdd1d6b7cde30b0d88801564896ef73"
+ },
+ "disparador/sms.py": {
+  "bytes": 6883,
+  "sha256": "df952e4ef672bf2171501a1f076342a359d41a20dab8ae912331317a06b2343f"
+ },
+ "disparador/sms_banco.py": {
+  "bytes": 15169,
+  "sha256": "7585709c5cb982546670ddb6f66ba6f4a5fd93a600cd91e02784ba325e4d8855"
+ },
+ "disparador/sms_gateway.py": {
+  "bytes": 7024,
+  "sha256": "88409db684f612ac1ced8dc1ed18d9e99d60257c816f44fe864cfab0bfb4bf4b"
+ },
+ "disparador/sms_worker.py": {
+  "bytes": 11935,
+  "sha256": "42dca2dc43faa2cc9534435c7bd488c816bb61c261f624169c18623df7ce3326"
  },
  "disparador/templates.py": {
   "bytes": 11763,
   "sha256": "e62be54fa492cc81c3d4d3243b36ccd1ba0ff3dbd889f782f1ef5bfbe87a806c"
  },
  "disparador/ui.py": {
-  "bytes": 39742,
-  "sha256": "7d089c50c02d08c266018cf86ac3739cbe860d37dba6a9c42df51b1a6e7a28e8"
+  "bytes": 43088,
+  "sha256": "4f099ad6fb8e821130c82f9030266fe1e132ed4de6d48744337caa535dcf6cc1"
+ },
+ "disparador/ui_sms.py": {
+  "bytes": 23575,
+  "sha256": "3396fd30764c288bdda78fb4917f3092aca9d27711ac8540f69025c42f2bc380"
  },
  "disparador/utils.py": {
   "bytes": 916,
@@ -211,6 +239,10 @@
   "bytes": 4975,
   "sha256": "b1bd614d6d459655b459a4e757c5a7fe79ad361c7b4b557bd10b792df4c96106"
  },
+ "migracao_v7.sql": {
+  "bytes": 6001,
+  "sha256": "4fdd39aa25ffeff78c1137d8d3075a689f6624b2554390ba9343c0f33a549093"
+ },
  "requirements-agente.txt": {
   "bytes": 43,
   "sha256": "bb3a3dc9848d8b324261e37bdd23a3a36099119324387766f970aa776f88e580"
@@ -248,36 +280,36 @@
   "sha256": "7b16624fad451300cfe9e5ed93fd73c9b7085c0d54186f3f1e6ab7a18e748e45"
  },
  "rotas/mensagens.py": {
-  "bytes": 2056,
-  "sha256": "f7eabf5055a9685ef3a972f10bb8c91a9959730d0b1ef114f958c5322ae4c0db"
+  "bytes": 2339,
+  "sha256": "4f35ea222baaffddfc92bdbd06a29a0d88893f652eeb612cc958818bfbf5ae55"
  },
  "rotas/nomes.py": {
   "bytes": 2990,
   "sha256": "753080de2cf934f8357f6f8e89a10a761ece4d040b6d1633d57d40047c39c19c"
  },
  "rotas/perfis.py": {
-  "bytes": 5309,
-  "sha256": "893498ee171ee7b8a2dd88aecb9fcdad45ab6f46b2ccd21aed24c1fce6f0c309"
+  "bytes": 8883,
+  "sha256": "07134eea2770e4fcdc1679e1ea4c3e6051f6ec56509a11e9ac9eb22fdf128b4c"
  },
  "rotas/processamento.py": {
-  "bytes": 10258,
-  "sha256": "37e84a98780c02af82dc4776b24246826766a4fa347ec4f3f69bc90075b689ed"
+  "bytes": 13284,
+  "sha256": "f391149d711a1488c4571f2630b8ab7f11a0af01a8565370002aa93c4de2c482"
  },
  "rotas/repositorio.py": {
-  "bytes": 5976,
-  "sha256": "72d1db96bed55c7966c046847baeb2dae91cd27deb81a3f737e959aebb60a98f"
+  "bytes": 6641,
+  "sha256": "d064dc815c98c4c706386c74e4ae3ec1b0f16697814f16507a602712ed4b9c77"
  },
  "rotas/vinculos.py": {
-  "bytes": 1489,
-  "sha256": "dc4f864e922066d65cc71f3a4dffb2e0968f5ab2d841041d09398fa3664622dd"
+  "bytes": 2511,
+  "sha256": "2cbe6cb22922900b0af59743816de6819008cfa29598a0e7c64d89f4f54eeaab"
  },
  "rotas/whatsapp.py": {
   "bytes": 4334,
   "sha256": "03fe53dda86a82e5e8a3e09997cd9ab6b713137446e519e8c5a6fd44f4be49a9"
  },
  "secrets.exemplo.toml": {
-  "bytes": 2238,
-  "sha256": "cdf5d549ddcdcf102e8776612d0e15fc43c0d53f0f18b61309abe32d85a6d543"
+  "bytes": 2398,
+  "sha256": "2b82b4f03e8530478363f6faab6a483dd34f27d58d932969bcfe907bae55a191"
  },
  "tests/__init__.py": {
   "bytes": 777,
@@ -288,12 +320,16 @@
   "sha256": "b2778302dedfd7f24c35a2f64fda226fc9a6c7b7ba266d3a738c7bfb26ca290e"
  },
  "tests/fakes.py": {
-  "bytes": 10743,
-  "sha256": "fb37948aeca2cf068564d3c53a61e6c4080e69911cb055191a0faa07b7d1bb7f"
+  "bytes": 10887,
+  "sha256": "a478ae18f22a47cb2e6df242fce009f6f652f3602ae7babc3388fc2a76609155"
  },
  "tests/test_bipagem.py": {
   "bytes": 26495,
   "sha256": "cc46bb8362cd62c205cfd3badef971926163f46b94681ee3ac7e84f8d4a41226"
+ },
+ "tests/test_compat.py": {
+  "bytes": 1972,
+  "sha256": "712ac42de5103b48db051bf3c39aedd63924924890312aa23ac1defa440ebe74"
  },
  "tests/test_core.py": {
   "bytes": 12406,
@@ -304,8 +340,8 @@
   "sha256": "fbd40036c9fb73507c82ed40df75ea038bb2da0ce9335c75c7fe88c8f5e5e7a9"
  },
  "tests/test_fila.py": {
-  "bytes": 9819,
-  "sha256": "d1cf781f41b5abbb1d8ca6bc522a8f1b1e79caee6f4c14253c667963fa247e43"
+  "bytes": 10856,
+  "sha256": "518873eb9f772b5d5141d2ea0590bc113c7317f1556b1cdd160ccfac8edbf1b9"
  },
  "tests/test_integridade.py": {
   "bytes": 1616,
@@ -315,17 +351,25 @@
   "bytes": 10834,
   "sha256": "07c81329f9b12bd5de52854d02b8e36ce1864b280baa4c63d0935db96d597a05"
  },
+ "tests/test_pacote_final.py": {
+  "bytes": 14379,
+  "sha256": "2c8cf32381afba807f6e660c01ab69774f2ea4757229627e33b40444eb211418"
+ },
  "tests/test_rotas.py": {
   "bytes": 22492,
   "sha256": "d3e4e650fabd5ea7bdd458be8d800f77a127aab23d1399869aae3cd49eaae50b"
+ },
+ "tests/test_sms.py": {
+  "bytes": 20402,
+  "sha256": "7771dad406f692f48248055396dc4747a93febad717481344a9befd70640584b"
  },
  "tests/test_ui_smoke.py": {
   "bytes": 26200,
   "sha256": "36c13f5ea899042b204bfaadf11a40dc2734804002117939d8a213a9c1db3139"
  },
  "tests/test_variacoes.py": {
-  "bytes": 14199,
-  "sha256": "2d53c8e45ea576bdb3d158641db8827617869e0e2b45b18e26a6b5b499cab0fb"
+  "bytes": 18250,
+  "sha256": "966acae5d8d1547f8b31626505efd275ec881da56c1408e21ecac2b29d11f0bb"
  },
  "ui/__init__.py": {
   "bytes": 88,
@@ -340,8 +384,8 @@
   "sha256": "321333b333d4c032cea7ebe623f41381d0462c28ea1726a4625fe73195331a4f"
  },
  "ui/adm/bipagem.py": {
-  "bytes": 8946,
-  "sha256": "a85e688bb056e90cae038f1bdcb2744096b74fba660155e2b12c2fe9169e2496"
+  "bytes": 8938,
+  "sha256": "525ce1fff4ba4c47e64afb51b396895e1c56b7bb2a3e45965f9874cfc73f22ce"
  },
  "ui/adm/coletas.py": {
   "bytes": 10586,
@@ -352,8 +396,8 @@
   "sha256": "a736e31eef67d4d6654f523e3d7217db41853897d11f4a26930cfd01f83a19ef"
  },
  "ui/adm/fechamento.py": {
-  "bytes": 4450,
-  "sha256": "62d0cfc9170a1db94a1374fb69ad4281cfd0beec409ab0889968bbaed0ae8eb7"
+  "bytes": 5574,
+  "sha256": "b3673433c0fb7e6dcb5087f4640d118771c84c63a55f24374465855a3cac32ed"
  },
  "ui/adm/filtros.py": {
   "bytes": 1481,
@@ -364,8 +408,8 @@
   "sha256": "fefda16ff04e4513d96d1ea2cea27847d85b65d335ed485ee2b59679254f7ac7"
  },
  "ui/adm/rotas.py": {
-  "bytes": 39938,
-  "sha256": "dc4b7a8a98ebbc072338f13ff346ac283869414c7d393aff926355448ef12d72"
+  "bytes": 41521,
+  "sha256": "652d8ce42f77b517071f9901133e1630c88026f906a3f21a059ea3348b3d0d20"
  },
  "ui/adm/usuarios.py": {
   "bytes": 5320,
@@ -400,12 +444,12 @@
   "sha256": "3fc44720392de984ee1a397bf761b4216df3ce0471d4046de2800014c57adac3"
  },
  "ui/coletor/extrato.py": {
-  "bytes": 5302,
-  "sha256": "120d86f0fcb8516ea3cc90eb1984c4d32f190084105cfa4a438d97ddbbdb412a"
+  "bytes": 5294,
+  "sha256": "cee3accd0fdbc39ff8797cbc8ca72c54781247fcf4f96cfed9cfbba8d495c6e0"
  },
  "ui/componentes.py": {
-  "bytes": 2957,
-  "sha256": "c5da4b44591e8af472f8d17763b3cff31d750de623ebbd0df5563115a771e732"
+  "bytes": 4113,
+  "sha256": "cc88c990002f29aac501406cb955e9c828e1e75e474fd03f9cf3d26393965ea0"
  },
  "ui/conta.py": {
   "bytes": 1007,

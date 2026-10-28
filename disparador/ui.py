@@ -11,7 +11,7 @@ from core.config import cfg
 from core.consulta import buscar_todos
 from core.exportacao import gerar_excel
 from core.utils import agora_br, hoje_br, serie_utc_para_br
-from ui.componentes import baixar_excel, cabecalho, cartao, erro_banco, metricas, navegacao, vazio
+from ui.componentes import baixar_excel, cabecalho, cartao, erro_banco, escolher_inicio, metricas, navegacao, vazio
 
 from . import campanha, colunas, contato, fila, gatilho, ia, planilha, templates, variacoes
 from . import metricas as met
@@ -21,7 +21,7 @@ from .envio_smtp import GerenteSMTP
 from .utils import email_valido, separar_emails
 
 PERIODOS_CLIQUES = {"Últimos 30 dias": 30, "Últimos 90 dias": 90, "Último ano": 365, "Tudo": 0}
-SECOES = ["🚀 Disparos", "⏱️ Fila", "✉️ Modelos", "🔑 Contas", "🚫 Descadastros", "📜 Histórico", "📈 Cliques"]
+SECOES = ["🚀 Disparos", "⏱️ Fila", "✉️ Modelos", "🔑 Contas", "🚫 Descadastros", "📜 Histórico", "📈 Cliques", "📱 SMS"]
 
 
 def _cofre():
@@ -320,8 +320,9 @@ def _pagina_disparo(sb):
         st.caption("Vai para a fila e é enviado por um trabalhador no servidor: você pode **fechar a página e mexer em "
                    "qualquer outra coisa**. Acompanhe, pause ou cancele na seção **⏱️ Fila**.")
         nome_campanha = st.text_input("Nome da campanha", value=f"{nome_modelo} · {agora_br():%d/%m %H:%M}", key="nome_campanha")
+        inicio = escolher_inicio("email_inicio")
         if st.button("📥 Colocar na fila", type="primary", use_container_width=True, disabled=not (revisado and rel.enviaveis)):
-            _enfileirar(sb, df, mapa, params, nome_campanha)
+            _enfileirar(sb, df, mapa, params, nome_campanha, inicio)
         return
     b1, b2 = st.columns([3, 1])
     if b2.button("🛑 PARAR", use_container_width=True):
@@ -343,18 +344,18 @@ def _acordar_trabalhador():
         return f"⚠️ Não consegui acionar na hora ({erro}). Ele roda sozinho no próximo ciclo (até 30 min)."
 
 
-def _enfileirar(sb, df, mapa, params, nome):
+def _enfileirar(sb, df, mapa, params, nome, inicio=None):
     registros = [colunas.registro_da_linha(linha, mapa) for _, linha in df.iterrows()]
     usuario = sessao.usuario_atual()["usuario"]
     try:
         camp = fila.criar_campanha(sb, usuario, nome, params.nome_modelo, params.modelo, params.ctx,
-                                   params.delay_min, params.delay_max, params.permitir_reenvio, registros)
+                                   params.delay_min, params.delay_max, params.permitir_reenvio, registros, agendada_para=inicio)
     except Exception as erro:
-        st.error(f"Não foi possível criar a fila (rodou o `migracao_v4.sql`?): {erro}")
+        st.error(f"Não foi possível criar a fila (rodou o `migracao_v4.sql`" + (" e o `migracao_v7.sql`" if inicio else "") + f"?): {erro}")
         return
     auditoria.registrar(sb, usuario, "campanha_na_fila", f"#{camp['id']} {camp['nome']} ({len(registros)} linhas)")
     st.success(f"✅ Campanha **#{camp['id']}** na fila com {len(registros)} linha(s).")
-    st.info(_acordar_trabalhador())
+    st.info(f"🕘 Agendada para {inicio:%d/%m/%Y às %H:%M}: o trabalhador só começa a partir dessa hora." if inicio else _acordar_trabalhador())
     st.caption("Abra a seção **⏱️ Fila** para acompanhar.")
 
 
@@ -379,7 +380,9 @@ def _cartao_campanha(sb, c):
     feitos = c["enviados"] + c["erros"] + c["ignorados"]
     restam = max(c["total"] - feitos, 0)
     ativo = c["status"] in fila.STATUS_ATIVOS
-    with st.expander(f"{fila.ROTULO.get(c['status'], c['status'])} · #{c['id']} · {c['nome']}", expanded=ativo or c["status"] == "pausada"):
+    with st.expander(f"{fila.rotulo(c)} · #{c['id']} · {c['nome']}", expanded=ativo or c["status"] == "pausada"):
+        if fila.esta_agendada(c):
+            st.info(f"🕘 Começa em {serie_utc_para_br(pd.Series([c['agendada_para']])).iloc[0]}. Para adiantar, use Pausar e depois Retomar.")
         st.progress(min(feitos / max(c["total"], 1), 1.0))
         metricas([("✅ Enviados", c["enviados"]), ("❌ Erros", c["erros"]), ("⏭️ Pulados", c["ignorados"]),
                   ("⏳ Faltam", restam, f"≈ {fila.tempo_restante_min(c, restam)} min de intervalo" if ativo and restam else None)])
@@ -485,7 +488,7 @@ def _pagina_modelos(sb):
             if st.button("🔎 Ver modelos disponíveis na minha chave"):
                 try:
                     st.code("\n".join(ia.listar_modelos_gemini(chave)), language="text")
-                    st.caption("Copie um nome (ex.: gemini-2.0-flash) para `GEMINI_MODEL` nos secrets.")
+                    st.caption("Copie um nome (ex.: gemini-flash-latest) para `GEMINI_MODEL` nos secrets.")
                 except ia.ErroIA as erro:
                     st.error(str(erro))
 
@@ -641,6 +644,22 @@ def _dados_cliques(_sb, dias):
     return cliques, envios, total
 
 
+def _diagnostico_ligacao(d):
+    """Mostra se os cliques estão sendo ligados aos e-mails enviados (e por qual identificador)."""
+    if not d:
+        return
+    with st.expander("🩺 Diagnóstico da ligação clique ↔ e-mail enviado"):
+        st.write(f"**{d['ligados']}** de **{d['total']}** cliques ligados a um e-mail enviado; **{d['sem_ligacao']}** sem ligação.")
+        if d["por_metodo"]:
+            st.write("Ligados por: " + ", ".join(f"{k} ({v})" for k, v in d["por_metodo"].items()))
+        if d["sem_ligacao"]:
+            st.warning("Há cliques que não batem com nenhum envio deste período. Escolha o período **Tudo**; se continuar, "
+                       "o identificador gravado no clique é diferente do usado no e-mail (veja os exemplos abaixo).")
+        st.caption(f"Colunas da tabela de cliques: {', '.join(d['colunas'])}")
+        st.caption(f"Exemplo de identificador no clique: {d['exemplo_clique'] or '(vazio)'} · "
+                   f"no envio: {d['exemplo_envio'] or '(vazio)'}")
+
+
 def _chamar_quem_clicou(sb, classificados, envios, descadastrados):
     """Quem clicou (pessoa) -> telefone da planilha -> link do WhatsApp com a mensagem pronta."""
     st.markdown("##### 📲 Chamar no WhatsApp quem clicou")
@@ -669,17 +688,43 @@ def _chamar_quem_clicou(sb, classificados, envios, descadastrados):
             fontes.append(contato.telefones_da_planilha(df, mapa))
         except Exception as erro:  # noqa: BLE001
             st.error(f"Erro ao ler a planilha: {erro}")
-    tabela, r = contato.montar_tabela(clicaram, fontes, descadastrados, mensagem, cfg("EMPRESA_NOME"))
+    ja_chamados = repo.chamados(sb)
+    tabela, r = contato.montar_tabela(clicaram, fontes, descadastrados, mensagem, cfg("EMPRESA_NOME"), ja_chamados)
     metricas([("🙋 Clicaram (pessoas)", r["clicaram"]), ("💬 Com WhatsApp", r["com_whatsapp"]),
               ("📵 Sem celular/telefone", r["sem_telefone"]), ("🚫 Pediram para sair", r["descadastrados"])])
     if r["sem_telefone"] and not arquivo:
         st.info("Os que estão **sem telefone** vêm de campanhas antigas: anexe acima a planilha original e eu cruzo pelo protocolo.")
     so_com = st.checkbox("Mostrar só quem tem WhatsApp", value=True, key="so_com_whats")
+    esconder = st.checkbox("Esconder quem eu já chamei", value=True, key="esconder_chamados")
     vitrine = tabela[tabela["WhatsApp"] != ""] if so_com else tabela
+    if esconder:
+        vitrine = vitrine[vitrine["Chamado"] == ""]
     st.dataframe(vitrine, hide_index=True, use_container_width=True,
                  column_config={"WhatsApp": st.column_config.LinkColumn("WhatsApp", display_text="💬 Enviar")})
+    _marcar_chamados(sb, tabela, vitrine)
     baixar_excel("📊 Baixar lista com links (.xlsx)", gerar_excel({"Quem clicou": tabela}),
                  f"quem_clicou_{agora_br():%Y%m%d_%H%M}.xlsx", chave="baixar_quem_clicou")
+
+
+def _marcar_chamados(sb, tabela, vitrine):
+    """Marca/desmarca "já chamei" (evita mandar duas vezes para o mesmo cliente)."""
+    rotulo = lambda r: f"{r['Protocolo']} · {r['Cliente'] or r['E-mail']}"  # noqa: E731
+    a, b = st.columns(2)
+    pendentes = {rotulo(r): (r["Protocolo"], r["E-mail"]) for _, r in vitrine.iterrows() if r["Chamado"] == ""}
+    escolhidos = a.multiselect("Marcar como já chamados", list(pendentes), key="marcar_chamados")
+    if a.button("✅ Marcar selecionados", key="btn_marcar_chamados", disabled=not escolhidos):
+        try:
+            repo.marcar_chamados(sb, [pendentes[x] for x in escolhidos], sessao.usuario_atual()["usuario"])
+            st.rerun()
+        except Exception as erro:
+            st.error(f"Não consegui marcar (rodou o `migracao_v7.sql`?): {erro}")
+    feitos = {rotulo(r): (r["Protocolo"], r["E-mail"]) for _, r in tabela.iterrows() if r["Chamado"] != ""}
+    if feitos:
+        desfazer = b.multiselect("Desfazer (voltar para a lista)", list(feitos), key="desmarcar_chamados")
+        if b.button("↩️ Desfazer selecionados", key="btn_desmarcar_chamados", disabled=not desfazer):
+            for x in desfazer:
+                repo.desmarcar_chamado(sb, *feitos[x])
+            st.rerun()
 
 
 def _pagina_cliques(sb):
@@ -695,6 +740,7 @@ def _pagina_cliques(sb):
     except Exception as erro:
         st.error(f"Erro ao carregar métricas de clique: {erro}")
         return
+    cliques, ligacao = met.ligar_aos_envios(cliques, envios) if not cliques.empty else (cliques, {})
     classificados = met.classificar_cliques(cliques, envios) if not cliques.empty else cliques
     if cliques.empty:
         vazio("Nenhum clique registrado até o momento.")
@@ -718,9 +764,16 @@ def _pagina_cliques(sb):
                      "desempenho_por_modelo.xlsx", chave="baixar_por_modelo")
     if cliques.empty:
         return
+    _diagnostico_ligacao(ligacao)
     _chamar_quem_clicou(sb, classificados, envios, sair)
     with st.expander("🔍 Ver detalhes dos cliques"):
         st.dataframe(classificados, hide_index=True, use_container_width=True)
+
+
+# ================================================================================ SMS
+def _pagina_sms(sb):
+    from . import ui_sms  # só carrega quando a aba é aberta
+    ui_sms.renderizar_sms(sb)
 
 
 # ============================================================================ ENTRADA
@@ -729,4 +782,4 @@ def renderizar_disparador(sb):
     secao = navegacao(SECOES, "nav_email")
     {"🚀 Disparos": _pagina_disparo, "⏱️ Fila": _pagina_fila, "✉️ Modelos": _pagina_modelos, "🔑 Contas": _pagina_contas,
      "🚫 Descadastros": _pagina_descadastros, "📜 Histórico": _pagina_historico,
-     "📈 Cliques": _pagina_cliques}[secao](sb)
+     "📈 Cliques": _pagina_cliques, "📱 SMS": _pagina_sms}[secao](sb)

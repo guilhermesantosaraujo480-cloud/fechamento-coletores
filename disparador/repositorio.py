@@ -153,6 +153,27 @@ def remover_descadastro(sb, email):
     sb.table("descadastros").delete().eq("email", email).execute()
 
 
+# ------------------------------------------------------------------- já chamado (quem clicou)
+def chamados(sb):
+    """Conjunto 'protocolo|e-mail' de quem você já chamou (tabela cliques_chamados, migracao_v7.sql). Vazio se a tabela não existir."""
+    try:
+        return {f"{r['protocolo']}|{str(r['email']).lower()}" for r in buscar_todos(sb, "cliques_chamados", "protocolo,email", ordem="protocolo")}
+    except Exception:  # noqa: BLE001 — sem a tabela, só não marca; a lista continua funcionando
+        return set()
+
+
+def marcar_chamados(sb, itens, por="", canal="whatsapp"):
+    """itens: lista de (protocolo, email). Levanta erro se a tabela não existir (a tela avisa)."""
+    linhas = [{"protocolo": str(p), "email": str(e).lower(), "canal": canal, "por": por, "data_hora": agora_utc_iso()} for p, e in itens]
+    if linhas:
+        sb.table("cliques_chamados").upsert(linhas, on_conflict="protocolo,email").execute()
+    return len(linhas)
+
+
+def desmarcar_chamado(sb, protocolo, email):
+    sb.table("cliques_chamados").delete().eq("protocolo", str(protocolo)).eq("email", str(email).lower()).execute()
+
+
 # ------------------------------------------------------------------- cliques
 def listar_cliques(sb, desde=None):
     """Cliques registrados (desde = data inicial, se a coluna data_hora existir; senão lê tudo)."""

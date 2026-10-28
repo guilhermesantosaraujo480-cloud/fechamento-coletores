@@ -16,7 +16,7 @@ from .colunas import registro_da_linha
 MENSAGEM_PADRAO = ("Olá, {cliente}! Aqui é da {empresa}. Identificamos que você abriu o nosso e-mail sobre a retirada do "
                    "equipamento (protocolo {protocolo}). Gostaria de agendar a coleta? Me diga o melhor dia e horário "
                    "para você. Se não quiser receber contato, é só avisar.")
-COLUNAS_SAIDA = ["Cliente", "Protocolo", "E-mail", "Telefone", "Modelo", "Clicou em", "WhatsApp"]
+COLUNAS_SAIDA = ["Cliente", "Protocolo", "E-mail", "Telefone", "Modelo", "Clicou em", "Chamado", "WhatsApp"]
 
 
 def quem_clicou(classificados, envios):
@@ -71,8 +71,13 @@ def telefones_da_planilha(df, mapa):
     return achados
 
 
-def montar_tabela(clicaram, fontes, descadastrados, mensagem, empresa):
+def chave_chamado(protocolo, email):
+    return f"{protocolo}|{str(email).lower()}"
+
+
+def montar_tabela(clicaram, fontes, descadastrados, mensagem, empresa, chamados=()):
     """Tabela final com o link do WhatsApp. `fontes`: lista de dicionários de telefone (a primeira que achar vale).
+    `chamados`: conjunto de 'protocolo|e-mail' que você já chamou (aparece "✅" na coluna Chamado).
     Devolve (tabela, resumo) com resumo = {'clicaram', 'com_whatsapp', 'sem_telefone', 'descadastrados'}."""
     sair = {str(e).lower() for e in descadastrados}
     linhas, resumo = [], {"clicaram": len(clicaram), "com_whatsapp": 0, "sem_telefone": 0, "descadastrados": 0}
@@ -90,5 +95,6 @@ def montar_tabela(clicaram, fontes, descadastrados, mensagem, empresa):
             resumo["sem_telefone"] += 1
         quando = r.clicou_em.tz_convert("America/Sao_Paulo").strftime("%d/%m %H:%M") if pd.notna(r.clicou_em) else ""
         linhas.append({"Cliente": r.nome or "", "Protocolo": r.protocolo, "E-mail": email,
-                       "Telefone": tels[0] or tels[1], "Modelo": r.modelo, "Clicou em": quando, "WhatsApp": link})
+                       "Telefone": tels[0] or tels[1], "Modelo": r.modelo, "Clicou em": quando,
+                       "Chamado": "✅" if chave_chamado(r.protocolo, email) in chamados else "", "WhatsApp": link})
     return pd.DataFrame(linhas, columns=COLUNAS_SAIDA), resumo

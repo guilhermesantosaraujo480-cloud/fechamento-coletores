@@ -2,6 +2,7 @@
 import requests
 
 WORKFLOW_PADRAO = "disparador.yml"
+WORKFLOW_SMS = "sms.yml"
 
 
 class ErroGatilho(RuntimeError):
@@ -28,7 +29,9 @@ def disparar_workflow(repo, token, workflow=WORKFLOW_PADRAO, ref="main", http=re
         raise ErroGatilho(f"GitHub respondeu {r.status_code}" + (f": {dica}" if dica else ""))
 
 
-def disparar_pela_tela(cfg, http=requests):
+def disparar_pela_tela(cfg, http=requests, sms=False):
+    """sms=True aciona o trabalhador de SMS (sms.yml); senão o de e-mails (disparador.yml)."""
+    chave, padrao = ("GITHUB_WORKFLOW_SMS", WORKFLOW_SMS) if sms else ("GITHUB_WORKFLOW", WORKFLOW_PADRAO)
     disparar_workflow(str(cfg("GITHUB_REPO")).strip(), str(cfg("GITHUB_TOKEN_DISPARO")).strip(),
-                      str(cfg("GITHUB_WORKFLOW", WORKFLOW_PADRAO)).strip() or WORKFLOW_PADRAO,
+                      str(cfg(chave, padrao)).strip() or padrao,
                       str(cfg("GITHUB_BRANCH", "main")).strip() or "main", http)

@@ -8,6 +8,7 @@ import pandas as pd
 from .perfis import CAMPOS, EXTRAS
 
 SEM_COLETOR = "(sem coletor)"
+TIPOS_CHIP = ("HLR", "NAKED")
 BAIRROS_GENERICOS = {"", "BAIRRO", "CENTRO NAO INFORMADO", "NAO INFORMADO", "N A", "NA"}
 
 
@@ -89,6 +90,11 @@ def aplicar_perfil(df, perfil):
     can["tel_ok"] = [a[1] or b[1] for a, b in zip(tel1, tel2)]
     cep = can["cep"].map(normalizar_cep)
     can["cep"], can["cep_ok"] = cep.map(lambda x: x[0]), cep.map(lambda x: x[1])
+    # Formatos "só números" e cidade em maiúsculas (usados pelo perfil Toolbox; os outros perfis não os usam)
+    can["celular_num"] = [(numero_do_celular(b) or numero_do_celular(a))[2:] or limpar(b or a) for a, b in zip(can["telefone"], can["telefone2"])]
+    can["cep_num"] = can["cep"].map(lambda v: re.sub(r"\D", "", v))
+    can["cidade_up"] = can["cidade"].map(lambda v: re.sub(r"\s+", " ", v).strip().upper())
+    can["itens"] = can["itens"].map(lambda v: re.sub(r"\s+", " ", v).strip().upper())
     can["mapa"] = [link_mapa(e, b, c, u, p) for e, b, c, u, p in
                    zip(can["endereco_completo"], can["bairro"], can["cidade"], can["uf"], can["cep"])]
     for campo in EXTRAS:  # campos extras: opcionais; coluna ausente = vazio, nunca é erro
@@ -119,6 +125,7 @@ def bairro_efetivo(can):
 def checar_qualidade(can):
     """Tabela de problemas que merecem olhar antes de mandar para o coletor."""
     achados = []
+    tem_itens = "itens" in can and bool((can["itens"] != "").any())  # só empresas de chip (Toolbox) usam este campo
     repetidos = set(can.loc[(can["id"] != "") & can["id"].duplicated(keep=False), "id"])
     mesmo_local = can[(can["endereco_completo"] != "")].groupby(["endereco_completo", "cep"]).size()
     mesmo_local = {k for k, v in mesmo_local.items() if v > 1}
@@ -136,6 +143,10 @@ def checar_qualidade(can):
             add("Bairro genérico (igual à cidade): agrupado pelo CEP", grave=False)
         if r["cep"] and not r["cep_ok"]:
             add("CEP inválido", grave=False)
+        if tem_itens and r["itens"] not in TIPOS_CHIP:
+            add("Tipo do chip não é HLR nem NAKED" + (f" ({r['itens']})" if r["itens"] else " (vazio)"))
+        if re.search(r"\b(\w{2,})\s+\1\b", chave_texto(r["endereco"])):
+            add("Endereço com palavra repetida (ex.: RUA RUA): confira o logradouro", grave=False)
         if r["id"] in repetidos:
             add("ID repetido na planilha")
         if (r["endereco_completo"], r["cep"]) in mesmo_local:
@@ -179,6 +190,21 @@ def dividir_entre(can, coletores):
 
 MENSAGEM_WHATS_PADRAO = "Olá, {cliente}, tudo bem? Estou no seu endereço para retirar o equipamento. Pode me atender?"
 
+# Mensagens prontas (aparecem na lista da tela de Rotas; você pode salvar as suas). Campos aceitos:
+# {cliente} primeiro nome · {coletor} · {rua} · {numero} · {bairro} · {cidade} · {protocolo}
+MODELOS_WHATS = [
+    ("Estou no endereço (padrão)", MENSAGEM_WHATS_PADRAO),
+    ("Estou chegando na região", "Olá, {cliente}! Aqui é {coletor}. Estarei na região do {bairro} em breve para retirar o equipamento "
+                                 "(protocolo {protocolo}). Você estará no endereço?"),
+    ("Confirmar endereço", "Olá, {cliente}, tudo bem? Aqui é {coletor}. Vou passar hoje para retirar o equipamento. "
+                           "O endereço é {rua}, {numero}, {bairro}? Pode confirmar?"),
+    ("Entrega do chip", "Olá, {cliente}! Aqui é {coletor}, estou a caminho para entregar o seu chip (pedido {protocolo}). "
+                        "Tem alguém no endereço {rua}, {numero}?"),
+    ("Não encontrei ninguém", "Olá, {cliente}. Passei no endereço {rua}, {numero} e não encontrei ninguém. "
+                              "Qual o melhor horário para eu voltar?"),
+]
+CAMPOS_MENSAGEM = ("{cliente}", "{coletor}", "{rua}", "{numero}", "{bairro}", "{cidade}", "{protocolo}")
+
 
 def primeiro_nome(nome):
     partes = str(nome or "").strip().split()
@@ -196,16 +222,28 @@ def numero_do_celular(telefone):
     return ""
 
 
-def link_whatsapp(telefone, telefone2="", cliente="", coletor="", modelo=None):
+def preencher_mensagem(modelo, cliente="", coletor="", extras=None):
+    """Troca os campos {cliente}, {coletor}, {rua}, {numero}, {bairro}, {cidade}, {protocolo} e arruma pontuação/espaços
+    (campo vazio não deixa buraco: 'Olá, , tudo bem?' vira 'Olá, tudo bem?')."""
+    extras = extras or {}
+    valores = {"{cliente}": primeiro_nome(cliente), "{coletor}": str(coletor or "")}
+    for k in ("rua", "numero", "bairro", "cidade", "protocolo"):
+        valores["{" + k + "}"] = str(extras.get(k, "") or "").strip()
+    texto = modelo or MENSAGEM_WHATS_PADRAO
+    for chave, valor in valores.items():
+        texto = texto.replace(chave, valor)
+    texto = re.sub(r"\s{2,}", " ", texto)
+    texto = re.sub(r"\s+([,!?.])", r"\1", texto)
+    texto = re.sub(r",(?=[,!?.])", "", texto)
+    return texto.strip()
+
+
+def link_whatsapp(telefone, telefone2="", cliente="", coletor="", modelo=None, extras=None):
     """https://wa.me/55DDDNUMERO?text=... usando o primeiro celular válido (telefone, depois telefone2). '' se não houver."""
     numero = numero_do_celular(telefone) or numero_do_celular(telefone2)
     if not numero:
         return ""
-    texto = (modelo or MENSAGEM_WHATS_PADRAO).replace("{cliente}", primeiro_nome(cliente)).replace("{coletor}", str(coletor or ""))
-    texto = re.sub(r"\s{2,}", " ", texto)
-    texto = re.sub(r"\s+([,!?.])", r"\1", texto)      # cliente sem nome: "Olá, , tudo bem?" vira "Olá, tudo bem?"
-    texto = re.sub(r",(?=[,!?.])", "", texto).strip()
-    return f"https://wa.me/{numero}?text=" + urllib.parse.quote(texto)
+    return f"https://wa.me/{numero}?text=" + urllib.parse.quote(preencher_mensagem(modelo, cliente, coletor, extras))
 
 
 def montar_saida(can, perfil, incluir_mapa=True, incluir_avisos=False, incluir_whats=False, modelo_whats=None, coletor=""):
@@ -215,8 +253,11 @@ def montar_saida(can, perfil, incluir_mapa=True, incluir_avisos=False, incluir_w
     if incluir_mapa:
         saida["Mapa"] = can["mapa"]
     if incluir_whats:
-        saida["WhatsApp"] = [link_whatsapp(t1, t2, nome, coletor, modelo_whats)
-                             for t1, t2, nome in zip(can["telefone"], can["telefone2"], can["nome"])]
+        saida["WhatsApp"] = [link_whatsapp(t1, t2, nome, coletor, modelo_whats,
+                                           {"rua": rua, "numero": num, "bairro": bairro, "cidade": cidade, "protocolo": proto})
+                             for t1, t2, nome, rua, num, bairro, cidade, proto in
+                             zip(can["telefone"], can["telefone2"], can["nome"], can["endereco"], can["numero"], can["bairro"],
+                                 can["cidade"], can["id"])]
     if incluir_avisos and "avisos" in can:
         saida["Avisos"] = can["avisos"]
     return saida.reset_index(drop=True)

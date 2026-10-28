@@ -74,7 +74,35 @@ def _conferencia(can, problemas):
             st.dataframe(problemas, hide_index=True, use_container_width=True)
 
 
-def _opcoes():
+def _escolher_mensagem(sb):
+    """Lista de mensagens prontas (do sistema + as suas, salvas no banco) e campo para editar/salvar. Devolve o texto escolhido."""
+    salvas = repo.listar_mensagens(sb)
+    opcoes = {n: t for n, t in pr.MODELOS_WHATS}
+    opcoes.update({f"⭐ {m['nome']}": m["texto"] for m in salvas})
+    nome = st.selectbox("Mensagem pronta", list(opcoes), key="rota_msg_escolha")
+    texto = st.text_area("Texto (pode editar)", value=opcoes[nome], height=90, key=f"rota_msg_texto_{abs(hash(nome)) % 100000}")
+    st.caption("Campos: " + " · ".join(f"`{c}`" for c in pr.CAMPOS_MENSAGEM) + ". Mensagem curta = link curto.")
+    st.caption("Exemplo: " + pr.link_whatsapp("11987654321", "", "MARIA DA SILVA", "GEOVAN", texto, EXEMPLO_ENDERECO))
+    c1, c2 = st.columns([3, 1])
+    novo_nome = c1.text_input("Salvar como (nome)", key="rota_msg_novo_nome", placeholder="Ex.: Aviso de chegada")
+    if c2.button("💾 Salvar", key="rota_msg_salvar") and novo_nome.strip() and texto.strip():
+        try:
+            repo.salvar_mensagem(sb, novo_nome, texto)
+            st.toast("Mensagem salva.", icon="✅")
+            st.rerun()
+        except Exception as erro:
+            st.error(f"Não consegui salvar (rodou o `migracao_v7.sql`?): {erro}")
+    mapa_id = {f"⭐ {m['nome']}": m["id"] for m in salvas}
+    if nome in mapa_id and st.button("🗑️ Apagar esta mensagem salva", key="rota_msg_apagar"):
+        repo.remover_mensagem(sb, mapa_id[nome])
+        st.rerun()
+    return texto
+
+
+EXEMPLO_ENDERECO = {"rua": "RUA DAS FLORES", "numero": "120", "bairro": "CENTRO", "cidade": "SUZANO", "protocolo": "4044738"}
+
+
+def _opcoes(sb):
     with cartao():
         c1, c2, c3, c4, c5 = st.columns([1.3, 1.8, 1.8, 1.5, 2])
         data_rota = c1.date_input("Data da rota", value=hoje_br(), format="DD/MM/YYYY", key="rota_data")
@@ -88,9 +116,7 @@ def _opcoes():
         modelo = pr.MENSAGEM_WHATS_PADRAO
         if whats:
             with st.expander("✏️ Mensagem que vai no link do WhatsApp"):
-                modelo = st.text_area("Mensagem (use {cliente} para o primeiro nome e {coletor} para o nome do coletor)",
-                                      value=pr.MENSAGEM_WHATS_PADRAO, height=80, key="rota_msg_whats")
-                st.caption("Exemplo: " + pr.link_whatsapp("11987654321", "", "MARIA DA SILVA", "GEOVAN", modelo))
+                modelo = _escolher_mensagem(sb)
     return data_rota, urgentes, avisos_col, mapa, whats, modelo
 
 
@@ -314,7 +340,7 @@ def _gerar(sb):
     if can.empty:
         st.error("A planilha não tem nenhuma linha com dados.")
         return
-    data_rota, urgentes, incluir_avisos, incluir_mapa, incluir_whats, modelo_whats = _opcoes()
+    data_rota, urgentes, incluir_avisos, incluir_mapa, incluir_whats, modelo_whats = _opcoes(sb)
     can = pr.ordenar_rota(avisos.aplicar_avisos(can, data_rota), urgentes_primeiro=urgentes)
     _conferencia(can, pr.checar_qualidade(can))
 
@@ -628,10 +654,12 @@ def _nova_empresa(sb):
             return
         opcoes = ["(não tem)"] + colunas
         mapa, cols = {}, st.columns(3)
-        padrao = {c.lower(): c for c in colunas}
+        # A chave inclui o arquivo: ao trocar a planilha de exemplo, as sugestões são refeitas.
+        # (Antes, "rp_nome" era usada duas vezes — no nome da empresa e no campo "Nome do cliente" — e quebrava a tela.)
+        sufixo_chave = f"{abs(hash((amostra.name, amostra.size))) % 100000}"
         for i, (campo, rotulo) in enumerate(pf.CAMPOS.items()):
-            sugestao = next((padrao[k] for k in padrao if k == rotulo.split(" / ")[0].lower() or k == campo), "(não tem)")
-            escolha = cols[i % 3].selectbox(rotulo, opcoes, index=opcoes.index(sugestao), key=f"rp_{campo}")
+            sugestao = pf.sugerir_coluna(campo, colunas) or "(não tem)"
+            escolha = cols[i % 3].selectbox(rotulo, opcoes, index=opcoes.index(sugestao), key=f"rp_col_{campo}_{sufixo_chave}")
             mapa[campo] = None if escolha == "(não tem)" else escolha
         extras = {}
         with st.expander("➕ Colunas extras (opcional): coletor, agenda, prioridade, último motivo..."):
@@ -640,7 +668,7 @@ def _nova_empresa(sb):
             achadas = {c.lower(): c for c in colunas}
             for i, (campo, rotulo) in enumerate(pf.EXTRAS.items()):
                 esc = cx[i % 3].selectbox(rotulo, opcoes, index=opcoes.index(achadas.get(rotulo.split(" / ")[0].lower(), "(não tem)")),
-                                          key=f"rpx_{campo}")
+                                          key=f"rpx_{campo}_{sufixo_chave}")
                 extras[campo] = None if esc == "(não tem)" else esc
         if st.button("💾 Salvar empresa", type="primary", key="rp_salvar"):
             if not nome.strip():

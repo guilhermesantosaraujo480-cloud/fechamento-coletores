@@ -228,3 +228,19 @@ class TestGatilho(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAgendamento(unittest.TestCase):
+    def test_campanha_agendada_so_entra_na_hora_marcada(self):
+        from datetime import datetime, timedelta, timezone
+        sb = fakes.FakeSupabase()
+        futuro = datetime.now(timezone.utc) + timedelta(hours=2)
+        camp = fila.criar_campanha(sb, "adm", "Agendada", "M", {"assunto": "a"}, CTX, 4, 8, False, registros(2), agendada_para=futuro)
+        self.assertTrue(fila.esta_agendada(camp))
+        self.assertEqual(fila.rotulo(camp), "🕘 Agendada")
+        self.assertEqual(fila.candidatas(sb), [])
+        self.assertEqual(len(fila.candidatas(sb, agora=futuro + timedelta(minutes=1))), 1)
+        normal = fila.criar_campanha(sb, "adm", "Normal", "M", {"assunto": "a"}, CTX, 4, 8, False, registros(1))
+        self.assertFalse(fila.esta_agendada(normal))
+        self.assertEqual([c["nome"] for c in fila.candidatas(sb)], ["Normal"])
+        self.assertNotIn("agendada_para", sb.tabelas["campanhas"][1])  # sem agendar, nada novo é gravado (banco antigo continua servindo)

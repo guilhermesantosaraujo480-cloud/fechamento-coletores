@@ -33,6 +33,71 @@ def _primeira_coluna(df, candidatas):
     return next((minusculas[c] for c in candidatas if c in minusculas), None)
 
 
+def _norm(v):
+    """Chave comparável: texto, sem espaços/chaves, minúsculo ('' se vazio)."""
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return ""
+    t = str(v).strip().strip("{}").lower()
+    return "" if t in ("nan", "none", "null") else t
+
+
+def ligar_aos_envios(cliques, envios):
+    """Liga cada clique ao e-mail enviado, mesmo que o identificador gravado pela Edge Function não seja exatamente o `envio_id`.
+
+    Tenta, nesta ordem: envio_id (ou 'envio') = envio_id do envio; = id do envio; protocolo; e-mail.
+    Devolve (cópia dos cliques com `envio_id` já ajustado + coluna `ligacao`, diagnóstico).
+    Cliques que não se ligam a nada mantêm o valor original (nada some)."""
+    diag = {"total": 0, "ligados": 0, "por_metodo": {}, "sem_ligacao": 0, "colunas": [], "exemplo_clique": "", "exemplo_envio": ""}
+    if cliques is None or cliques.empty:
+        return (cliques.copy() if cliques is not None else pd.DataFrame()), diag
+    df = cliques.copy()
+    diag["total"], diag["colunas"] = len(df), [str(c) for c in df.columns]
+    df["ligacao"] = ""
+    if envios is None or envios.empty or "envio_id" not in envios.columns:
+        diag["sem_ligacao"] = len(df)
+        return df, diag
+    env = envios.drop_duplicates("envio_id")
+    por_eid = {_norm(e): e for e in env["envio_id"] if _norm(e)}
+    por_id = {_norm(i): e for i, e in zip(env["id"], env["envio_id"])} if "id" in env.columns else {}
+    ordenado = envios[envios["status"] == "enviado"] if "status" in envios.columns else envios
+    if "data_hora" in ordenado.columns:
+        ordenado = ordenado.sort_values("data_hora")
+    por_proto, por_email = {}, {}
+    for r in ordenado.itertuples():
+        eid = getattr(r, "envio_id", "")
+        if _norm(getattr(r, "protocolo", "")):
+            por_proto[_norm(r.protocolo)] = eid
+        if _norm(getattr(r, "email", "")):
+            por_email[_norm(r.email)] = eid
+    minus = {str(c).lower(): c for c in df.columns}
+    col = lambda *nomes: next((minus[n] for n in nomes if n in minus), None)  # noqa: E731
+    c_env, c_pro, c_mail = col("envio_id", "envio"), col("protocolo"), col("email", "e-mail")
+    novos, metodos = [], []
+    for _, linha in df.iterrows():
+        valor = _norm(linha[c_env]) if c_env else ""
+        achou, metodo = None, ""
+        if valor in por_eid:
+            achou, metodo = por_eid[valor], "envio_id"
+        elif valor in por_id:
+            achou, metodo = por_id[valor], "id do envio"
+        elif c_pro and _norm(linha[c_pro]) in por_proto:
+            achou, metodo = por_proto[_norm(linha[c_pro])], "protocolo"
+        elif c_mail and _norm(linha[c_mail]) in por_email:
+            achou, metodo = por_email[_norm(linha[c_mail])], "e-mail"
+        novos.append(achou if achou is not None else (linha[c_env] if c_env else None))
+        metodos.append(metodo)
+    df["envio_id"] = novos
+    df["ligacao"] = metodos
+    contagem = pd.Series(metodos).value_counts()
+    diag["por_metodo"] = {k: int(v) for k, v in contagem.items() if k}
+    diag["ligados"] = int(sum(diag["por_metodo"].values()))
+    diag["sem_ligacao"] = diag["total"] - diag["ligados"]
+    if c_env and df[c_env].notna().any():
+        diag["exemplo_clique"] = str(df[c_env].dropna().iloc[0])
+    diag["exemplo_envio"] = str(env["envio_id"].iloc[0])
+    return df, diag
+
+
 def classificar_cliques(cliques, envios=None):
     """Devolve cópia do DataFrame com as colunas `perfil` (Pessoa/Robô) e `motivo`."""
     df = cliques.copy()
