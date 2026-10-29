@@ -357,7 +357,7 @@ enxerga problemas de aparência; teste visualmente no navegador e no celular ap�
 | Visão geral com A pagar errado | Saldo anterior não considerado | Já corrigido (ranking usa **A pagar**) |
 | Erro citando `qtd_acrescimo` | `migracao_v5.sql` não rodou | Rodar no Supabase |
 | App lento/antigo após muito uso | Cache ou banco sem índices | Rodar `migracao_v6.sql`; ver seção 10 |
-| SMS "Usuário ou senha incorretos" | Usuário/senha do app mudaram ou Cloud Server está Offline | Abrir o app, ligar Cloud Server (Online), recadastrar em 📱 Celulares e usar 🔌 Testar conexão |
+| SMS "Usuário ou senha incorretos/recusados" | (1) **Endereço da API** diferente de `https://api.sms-gate.app` (ex.: endereço do *Local server* com porta); (2) usuário/senha do bloco *Local server* em vez do *Cloud server*; (3) usuário/senha do app mudaram ou Cloud Server está Offline. A mensagem agora traz o código HTTP | Abrir o app, ligar Cloud Server (Online), recadastrar em 📱 Celulares e usar 🔌 Testar conexão |
 | SMS fica "Pendente"/não sai | Celular desligado, sem internet ou o Android pôs o app para dormir | Carregador + internet + tirar o app da economia de bateria; ver o app |
 | SMS pausou com "5 erros seguidos" | Celular fora, limite do app ou número recusado | Conferir o app; **▶️ Retomar** |
 | Campanha de SMS não anda no domingo/à noite | Horário permitido (9h–19h, sem domingo) | Mudar na campanha ao criar (domingo/horas) |
@@ -401,6 +401,10 @@ enxerga problemas de aparência; teste visualmente no navegador e no celular ap�
     `ROTA_TIM.xlsx`, ordenada por CEP, avisos de endereço suspeito e total HLR/NAKED por coletor); chaves dos campos renomeadas para
     `rp_col_<campo>` (fim do `StreamlitDuplicateElementKey`); sugestão de coluna ignora "Destino - "/"Origem - ". **Reintegra e CSS não mudaram**
     (teste confere). Revisão geral: ver seção 13 (≈ 265 testes) e a tabela de problemas (seção 14).
+18. **Teste de conexão do SMS mais claro (29/10/2026):** o cliente do app tenta o **login por token (JWT)** quando o servidor recusa o login
+    simples (401 **ou 403**) e as mensagens de erro agora mostram o **código HTTP** e a resposta do servidor. Motivo: no primeiro teste real
+    o botão "🔌 Testar conexão" respondeu "Usuário ou senha incorretos" mesmo com os dados do Cloud server do app; sem como testar o servidor
+    do app a partir do ambiente de desenvolvimento, passamos a mostrar o motivo real. 4 testes novos (`TestLoginPorToken`).
 
 ---
 

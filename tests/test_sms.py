@@ -406,3 +406,36 @@ class TestConferirEntrega(unittest.TestCase):
         estados = {r["id"]: r["estado"] for r in sb.tabelas["sms_envios"]}
         self.assertEqual(sorted(estados.values()), ["Delivered", "Delivered", "Failed"])
         self.assertEqual(len(n.pedidos), 2)  # o que já estava 'Delivered' não é consultado de novo
+
+
+class TestLoginPorToken(unittest.TestCase):
+    """Se o servidor recusar o Basic, o cliente tenta o token JWT (método recomendado pelo app)."""
+
+    def gw(self, nuvem):
+        return sms_gateway.Gateway("", "PM7LK8", "senha", abrir=nuvem)
+
+    def test_envio_usa_token_quando_o_basic_e_recusado(self):
+        n = Nuvem([(401, {}), (201, {"access_token": "T0K", "token_type": "Bearer"}), (202, {"id": "m9", "state": "Pending"})])
+        g = self.gw(n)
+        self.assertEqual(g.enviar("+5511987654321", "oi")[0], "m9")
+        self.assertIn("/auth/token", n.pedidos[1][1])
+        self.assertEqual(n.pedidos[1][2]["scopes"][0], "messages:send")
+        self.assertEqual(g._token, "T0K")
+
+    def test_teste_de_conexao_com_token(self):
+        n = Nuvem([(403, {}), (201, {"access_token": "T0K"}), (200, [{"id": "d1", "name": "Moto G"}])])
+        ok, msg = self.gw(n).testar()
+        self.assertTrue(ok)
+        self.assertIn("Moto G", msg)
+
+    def test_credencial_errada_mostra_codigos_http(self):
+        n = Nuvem([(401, {}), (401, {"message": "bad"})])
+        ok, msg = self.gw(n).testar()
+        self.assertFalse(ok)
+        self.assertIn("401", msg)
+        self.assertIn("Cloud server", msg)
+
+    def test_sem_token_mantem_o_erro_de_credencial(self):
+        with self.assertRaises(sms_gateway.ErroGateway) as c:
+            self.gw(Nuvem([(401, {}), (404, {})])).enviar("+5511987654321", "oi")
+        self.assertEqual(c.exception.tipo, "credencial")

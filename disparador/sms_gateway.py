@@ -10,7 +10,9 @@ API usada (docs.sms-gate.app):
     resposta 202: {"id": "...", "state": "Pending", ...}
     GET  {base}/3rdparty/v1/messages/{id}   estado: Pending | Processed | Sent | Delivered | Failed
     GET  {base}/3rdparty/v1/devices          celulares ligados à conta (usado no "Testar conexão")
-Autenticação: HTTP Basic (usuário:senha do app). O app tem ritmo, limite por hora/dia e horário próprios (Configurações → Mensagens).
+Autenticação: HTTP Basic (usuário:senha do app). Se o servidor recusar o Basic (401/403), tentamos o login moderno do app: troca usuário/senha
+por um token JWT (POST /3rdparty/v1/auth/token) e repete o pedido com "Bearer". Se o token também for recusado, o erro mostra o código HTTP e a
+mensagem do servidor, para saber se é mesmo usuário/senha. O app tem ritmo, limite por hora/dia e horário próprios (Configurações → Mensagens).
 Privacidade: o texto e o número passam pelo servidor do app (HTTPS). O app oferece criptografia de ponta a ponta e servidor privado.
 Só biblioteca padrão. `abrir` pode ser trocado nos testes.
 """
@@ -22,6 +24,8 @@ import urllib.request
 URL_NUVEM = "https://api.sms-gate.app"
 CAMINHOS = ("/3rdparty/v1/messages", "/3rdparty/v1/message")
 CAMINHO_DISPOSITIVOS = "/3rdparty/v1/devices"
+CAMINHO_TOKEN = "/3rdparty/v1/auth/token"
+ESCOPOS_TOKEN = ["messages:send", "messages:read", "messages:list", "devices:list"]
 TEMPO_LIMITE = 25
 TTL_PADRAO = 7200  # se o celular ficar desligado, o pedido vence em 2 h em vez de sair atrasado
 
@@ -61,17 +65,48 @@ class Gateway:
             self.base = "https://" + self.base
         self.usuario, self._senha, self.sim = str(usuario or ""), str(senha or ""), sim
         self._abrir = abrir or _abrir_padrao
+        self._token, self._token_recusado, self.ultimo = None, False, (0, "")
 
-    def _pedido(self, metodo, caminho, corpo=None):
-        credencial = base64.b64encode(f"{self.usuario}:{self._senha}".encode()).decode()
+    def _pedido(self, metodo, caminho, corpo=None, so_basico=False):
+        """(status, json). Usa Bearer se já temos token; no 401/403 tenta trocar usuário/senha por token e repete uma vez."""
+        status, resp = self._chamar(metodo, caminho, corpo, so_basico)
+        if status in (401, 403) and not so_basico and not self._token and not self._token_recusado:
+            if self._obter_token():
+                status, resp = self._chamar(metodo, caminho, corpo, False)
+        self.ultimo = (status, str(resp.get("message") or resp.get("error") or "")[:150] if isinstance(resp, dict) else "")
+        return status, resp
+
+    def _chamar(self, metodo, caminho, corpo, so_basico):
+        if self._token and not so_basico:
+            autorizacao = f"Bearer {self._token}"
+        else:
+            autorizacao = "Basic " + base64.b64encode(f"{self.usuario}:{self._senha}".encode()).decode()
         dados = json.dumps(corpo).encode("utf-8") if corpo is not None else None
         req = urllib.request.Request(self.base + caminho, data=dados, method=metodo, headers={
-            "Authorization": f"Basic {credencial}", "Content-Type": "application/json", "Accept": "application/json"})
+            "Authorization": autorizacao, "Content-Type": "application/json", "Accept": "application/json"})
         try:
             status, resp = self._abrir(req, TEMPO_LIMITE)
         except (urllib.error.URLError, TimeoutError, OSError) as erro:
             raise ErroGateway(f"Sem conexão com o servidor do aplicativo: {erro}") from erro
         return status, _json(resp)
+
+    def _obter_token(self):
+        """Login moderno: usuário/senha -> token. True se conseguiu (e passa a usar Bearer)."""
+        try:
+            status, r = self._chamar("POST", CAMINHO_TOKEN, {"ttl": 3600, "scopes": ESCOPOS_TOKEN}, True)
+        except ErroGateway:
+            self._token_recusado = True
+            return False
+        token = r.get("access_token") or r.get("accessToken") if isinstance(r, dict) else None
+        if status in (200, 201) and token:
+            self._token = str(token)
+            return True
+        self._token_recusado = True
+        return False
+
+    def _detalhe(self):
+        status, msg = self.ultimo
+        return f"HTTP {status}" + (f": {msg}" if msg else "")
 
     def enviar(self, telefone, texto, ttl=TTL_PADRAO):
         """Entrega o SMS ao app. Devolve (id_da_mensagem, estado). O app envia pelo chip no ritmo dele."""
@@ -87,9 +122,9 @@ class Gateway:
             return str(r.get("id") or ""), str(r.get("state") or r.get("status") or "Pending")
         detalhe = str(r.get("message") or r.get("error") or "")[:150]
         if status == 401:
-            raise ErroGateway("Usuário ou senha do aplicativo incorretos (veja a tela do app, em Cloud Server).", "credencial")
+            raise ErroGateway(f"Usuário ou senha do aplicativo incorretos (veja a tela do app, em Cloud Server). [{self._detalhe()}]", "credencial")
         if status == 403:
-            raise ErroGateway("Sem permissão para enviar (confira usuário/senha e se o app está no modo Cloud Server).", "credencial")
+            raise ErroGateway(f"Sem permissão para enviar (confira usuário/senha e se o app está no modo Cloud Server). [{self._detalhe()}]", "credencial")
         if status == 404:
             raise ErroGateway("Endereço da API não encontrado (confira a URL do servidor).", "credencial")
         if status in (400, 422):
@@ -111,15 +146,18 @@ class Gateway:
         return str(r.get("state") or r.get("status") or "") if status == 200 else ""
 
     def testar(self):
-        """(ok, texto) — confere usuário/senha e mostra quantos celulares estão ligados à conta."""
+        """(ok, texto) — confere usuário/senha e mostra quantos celulares estão ligados à conta. O texto traz o código HTTP."""
         try:
             status, r = self._pedido("GET", CAMINHO_DISPOSITIVOS)
         except ErroGateway as erro:
             return False, str(erro)
         if status in (401, 403):
-            return False, "Usuário ou senha incorretos."
+            return False, (f"Usuário ou senha recusados pelo servidor do app ({self._detalhe()}). Use o Username e a Password do bloco "
+                           f"**Cloud server** do app (serviço iniciado) e deixe o endereço exatamente como {URL_NUVEM}.")
+        if status == 404:
+            return False, f"Endereço da API não encontrado (HTTP 404). Confira se está exatamente {URL_NUVEM}."
         if status != 200:
-            return False, f"O servidor respondeu {status}."
+            return False, f"O servidor respondeu {self._detalhe()}."
         aparelhos = r if isinstance(r, list) else (r.get("devices") or r.get("items") or [])
         if not aparelhos:
             return True, "Conectou, mas nenhum celular aparece. Abra o app, ligue o Cloud Server e toque em Online."

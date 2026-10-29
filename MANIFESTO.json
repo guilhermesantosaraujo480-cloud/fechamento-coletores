@@ -36,8 +36,8 @@
   "sha256": "aa3bf6ddb35940a6f7abe4791d2321de0efd53708aabb3e2cc6744fe1de5e0d2"
  },
  "README.md": {
-  "bytes": 42774,
-  "sha256": "547cc1f695fc529d00d71de94402ab9136de9aaf707fcd5ed0463d9e104bed47"
+  "bytes": 43561,
+  "sha256": "d59c68c2b33b2f2804819b90c752350e5e18286103dca75767f69e66ecaf9fb9"
  },
  "app.py": {
   "bytes": 4495,
@@ -180,8 +180,8 @@
   "sha256": "7585709c5cb982546670ddb6f66ba6f4a5fd93a600cd91e02784ba325e4d8855"
  },
  "disparador/sms_gateway.py": {
-  "bytes": 7024,
-  "sha256": "88409db684f612ac1ced8dc1ed18d9e99d60257c816f44fe864cfab0bfb4bf4b"
+  "bytes": 9420,
+  "sha256": "ee2815cdae4a0998556ee1f40acb1b2651c0007b3873c5b5eee56f8124243f8d"
  },
  "disparador/sms_worker.py": {
   "bytes": 11935,
@@ -360,8 +360,8 @@
   "sha256": "d3e4e650fabd5ea7bdd458be8d800f77a127aab23d1399869aae3cd49eaae50b"
  },
  "tests/test_sms.py": {
-  "bytes": 20402,
-  "sha256": "7771dad406f692f48248055396dc4747a93febad717481344a9befd70640584b"
+  "bytes": 21872,
+  "sha256": "af59edb78cbf412df34a5ff352c9023ea8f26470ddfd4aaec03f93b087b2decf"
  },
  "tests/test_ui_smoke.py": {
   "bytes": 26200,
