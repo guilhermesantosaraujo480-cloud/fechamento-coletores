@@ -168,7 +168,10 @@ class Gateway:
             status, r = self._pedido("GET", CAMINHO_DISPOSITIVOS)
         except ErroGateway as erro:
             return False, str(erro)
-        if status in (401, 403):
+        if status == 403:  # login reconhecido, mas esta credencial não pode LISTAR celulares (enviar costuma funcionar): confirmar com SMS de teste
+            return True, (f"O servidor do app aceitou o login, mas não permite listar os celulares ({self._detalhe()}). Isso é comum e não "
+                          "impede o envio: confirme mandando o **SMS de teste** para o seu número na aba ✉️ Enviar.")
+        if status == 401:
             return False, (f"Usuário ou senha recusados pelo servidor do app ({self._detalhe()}). Use o Username e a Password do bloco "
                            f"**Cloud server** do app (serviço iniciado) e deixe o endereço exatamente como {URL_NUVEM}.")
         if status == 404:

@@ -454,3 +454,14 @@ class TestCredenciaisColadas(unittest.TestCase):
                         "https://api.sms-gate.app/3rdparty/v1/", "", "  https://api.sms-gate.app  "):
             self.assertEqual(sms_gateway.limpar_endereco(entrada), "https://api.sms-gate.app", entrada)
         self.assertEqual(sms_gateway.limpar_endereco("http://192.168.0.5:8080"), "http://192.168.0.5:8080")
+
+
+class TestTesteComPermissaoLimitada(unittest.TestCase):
+    def test_403_ao_listar_celulares_nao_e_senha_errada(self):
+        ok, msg = sms_gateway.Gateway("", "USUARIO1", "senha", abrir=Nuvem([(403, {}), (403, {})])).testar()
+        self.assertTrue(ok)
+        self.assertIn("SMS de teste", msg)
+
+    def test_401_continua_sendo_senha_errada(self):
+        ok, msg = sms_gateway.Gateway("", "USUARIO1", "senha", abrir=Nuvem([(401, {}), (401, {})])).testar()
+        self.assertFalse(ok)

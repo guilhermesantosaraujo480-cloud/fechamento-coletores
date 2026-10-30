@@ -424,6 +424,9 @@ enxerga problemas de aparência; teste visualmente no navegador e no celular ap�
     (que só gravava `protocolo`). A plataforma aceita os dois formatos de clique.
     **Acesso do agente:** leitura do GitHub funciona; o envio de arquivos por lá exige instalar o *Claude GitHub App* no repositório
     (https://github.com/apps/claude/installations/select_target). Até lá, atualizações seguem por zip.
+21. **Teste de conexão do SMS e erro 403 (29/10/2026):** no teste real o app respondeu **HTTP 403** (não 401) ao *listar celulares*. 403 = login
+    reconhecido, mas sem permissão para essa consulta (a documentação do app usa o login simples só para **enviar**); 401 = usuário/senha
+    errados. Agora o 🔌 Testar conexão trata 403 como "login aceito" e manda confirmar com o **SMS de teste** (aba ✉️ Enviar); 401 continua sendo erro.
 
 ---
 
