@@ -360,8 +360,8 @@
   "sha256": "d3e4e650fabd5ea7bdd458be8d800f77a127aab23d1399869aae3cd49eaae50b"
  },
  "tests/test_sms.py": {
-  "bytes": 22786,
-  "sha256": "287b7025edcc046171c06d21a6e3ff3f3ac8af7eea9d989db62bbd1b22d7921c"
+  "bytes": 22794,
+  "sha256": "dc366aa28db08f0ff4a179f4f9d0b40de2dd182139ea429326ea4f0c728ac2f1"
  },
  "tests/test_ui_smoke.py": {
   "bytes": 26200,

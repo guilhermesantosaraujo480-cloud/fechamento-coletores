@@ -412,7 +412,7 @@ class TestLoginPorToken(unittest.TestCase):
     """Se o servidor recusar o Basic, o cliente tenta o token JWT (método recomendado pelo app)."""
 
     def gw(self, nuvem):
-        return sms_gateway.Gateway("", "PM7LK8", "senha", abrir=nuvem)
+        return sms_gateway.Gateway("", "USUARIO1", "senha", abrir=nuvem)
 
     def test_envio_usa_token_quando_o_basic_e_recusado(self):
         n = Nuvem([(401, {}), (201, {"access_token": "T0K", "token_type": "Bearer"}), (202, {"id": "m9", "state": "Pending"})])
@@ -445,9 +445,9 @@ class TestCredenciaisColadas(unittest.TestCase):
     """O que se cola do celular pode trazer espaço/caractere invisível; o endereço pode vir com porta ou caminho."""
 
     def test_limpa_invisiveis_e_espacos(self):
-        self.assertEqual(sms_gateway.limpar_credencial(" zaqa0f​sb  \n"), "zaqa0fsb")
-        g = sms_gateway.Gateway("", "PM7LK8​ ", "abc​123 ")
-        self.assertEqual((g.usuario, g._senha), ("PM7LK8", "abc123"))
+        self.assertEqual(sms_gateway.limpar_credencial(" senha0f​sb  \n"), "senha0fsb")
+        g = sms_gateway.Gateway("", "USUARIO1​ ", "abc​123 ")
+        self.assertEqual((g.usuario, g._senha), ("USUARIO1", "abc123"))
 
     def test_normaliza_endereco(self):
         for entrada in ("https://api.sms-gate.app:443", "api.sms-gate.app:443", "https://api.sms-gate.app/mobile/v1",
