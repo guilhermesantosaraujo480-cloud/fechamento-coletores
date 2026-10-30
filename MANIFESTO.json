@@ -36,8 +36,8 @@
   "sha256": "aa3bf6ddb35940a6f7abe4791d2321de0efd53708aabb3e2cc6744fe1de5e0d2"
  },
  "README.md": {
-  "bytes": 43561,
-  "sha256": "d59c68c2b33b2f2804819b90c752350e5e18286103dca75767f69e66ecaf9fb9"
+  "bytes": 46199,
+  "sha256": "c96456f1094224a0b0886047a5c80848fd756f2c3388a216d17e8ebe50ccab45"
  },
  "app.py": {
   "bytes": 4495,
@@ -160,16 +160,16 @@
   "sha256": "c635105c985decbf948c890cbbf2ec2921d3ba4be04da92cb6d71a0680eaaa2a"
  },
  "disparador/metricas.py": {
-  "bytes": 8854,
-  "sha256": "1c3ca70b12db5250d8c2616029d8bb33ce0f6c2df8d069070a3d6589e93754ff"
+  "bytes": 9022,
+  "sha256": "3934fe2ad5535daa1a4d096f41aed4968551fe072a4215dc2da5ed9791a0018d"
  },
  "disparador/planilha.py": {
   "bytes": 3005,
   "sha256": "dab39f921bb269b031160ce893bb25cd7304738c20b4d73eeadce9273a90711b"
  },
  "disparador/repositorio.py": {
-  "bytes": 7925,
-  "sha256": "cfb13dc2b487c18ea616a72a65901abdfcdd1d6b7cde30b0d88801564896ef73"
+  "bytes": 8088,
+  "sha256": "795e43e9f62ac91870249beccb0903be5fc92f2f9177ce6b040f047aba0b4c97"
  },
  "disparador/sms.py": {
   "bytes": 6883,
@@ -180,8 +180,8 @@
   "sha256": "7585709c5cb982546670ddb6f66ba6f4a5fd93a600cd91e02784ba325e4d8855"
  },
  "disparador/sms_gateway.py": {
-  "bytes": 9420,
-  "sha256": "ee2815cdae4a0998556ee1f40acb1b2651c0007b3873c5b5eee56f8124243f8d"
+  "bytes": 10245,
+  "sha256": "a8ef0eae335b19390bd9fdfceeff4273536ade4427f3fdaf237b6c12cbe868bb"
  },
  "disparador/sms_worker.py": {
   "bytes": 11935,
@@ -360,16 +360,16 @@
   "sha256": "d3e4e650fabd5ea7bdd458be8d800f77a127aab23d1399869aae3cd49eaae50b"
  },
  "tests/test_sms.py": {
-  "bytes": 21872,
-  "sha256": "af59edb78cbf412df34a5ff352c9023ea8f26470ddfd4aaec03f93b087b2decf"
+  "bytes": 22786,
+  "sha256": "287b7025edcc046171c06d21a6e3ff3f3ac8af7eea9d989db62bbd1b22d7921c"
  },
  "tests/test_ui_smoke.py": {
   "bytes": 26200,
   "sha256": "36c13f5ea899042b204bfaadf11a40dc2734804002117939d8a213a9c1db3139"
  },
  "tests/test_variacoes.py": {
-  "bytes": 18250,
-  "sha256": "966acae5d8d1547f8b31626505efd275ec881da56c1408e21ecac2b29d11f0bb"
+  "bytes": 20738,
+  "sha256": "9f749175d159125bb209bd45516c6f2699d29134f4456e70f44e5c24020ff195"
  },
  "ui/__init__.py": {
   "bytes": 88,

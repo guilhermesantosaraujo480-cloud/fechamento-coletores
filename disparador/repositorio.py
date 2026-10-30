@@ -176,12 +176,14 @@ def desmarcar_chamado(sb, protocolo, email):
 
 # ------------------------------------------------------------------- cliques
 def listar_cliques(sb, desde=None):
-    """Cliques registrados (desde = data inicial, se a coluna data_hora existir; senão lê tudo)."""
+    """Cliques registrados (desde = data inicial; a coluna de data é `data_clique` na tabela atual, `data_hora` em versões antigas;
+    se nenhuma existir, lê tudo)."""
     if desde is not None:
-        try:
-            return buscar_todos(sb, "cliques_email", "*", faixa=("data_hora", desde, None), ordem="id")
-        except Exception:  # noqa: BLE001 — tabela sem essa coluna: lê tudo
-            pass
+        for coluna in ("data_clique", "data_hora"):
+            try:
+                return buscar_todos(sb, "cliques_email", "*", faixa=(coluna, desde, None), ordem="id")
+            except Exception:  # noqa: BLE001 — tabela sem essa coluna: tenta a outra e, por fim, lê tudo
+                continue
     try:
         return buscar_todos(sb, "cliques_email", "*", ordem="id")
     except Exception:  # tabela sem coluna `id`: leitura simples (limitada pelo Supabase a 1000 linhas)

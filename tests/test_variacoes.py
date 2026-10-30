@@ -339,3 +339,41 @@ class TestJaChamado(unittest.TestCase):
         sb = fakes.FakeSupabase()
         sb.falhar_em = {"cliques_chamados"}
         self.assertEqual(repo.chamados(sb), set())
+
+
+class TestCliquesComDataClique(unittest.TestCase):
+    """A tabela real `cliques_email` tem `data_clique` (não `data_hora`) e grava o PROTOCOLO em `envio_id` (Edge Function)."""
+
+    def test_rajada_e_clique_rapido_sao_robos_com_data_clique(self):
+        envios = pd.DataFrame([
+            {"id": 1, "envio_id": "u1", "data_hora": "2026-10-20T12:00:00+00:00", "email": "a@x.com", "protocolo": "111",
+             "nome": "Ana", "modelo": "M", "status": "enviado"},
+            {"id": 2, "envio_id": "u2", "data_hora": "2026-10-20T12:00:00+00:00", "email": "b@x.com", "protocolo": "222",
+             "nome": "Bia", "modelo": "M", "status": "enviado"},
+            {"id": 3, "envio_id": "u3", "data_hora": "2026-10-20T12:00:00+00:00", "email": "c@x.com", "protocolo": "333",
+             "nome": "Caio", "modelo": "M", "status": "enviado"},
+        ])
+        cliques = pd.DataFrame([
+            {"id": 1, "envio_id": "111", "data_clique": "2026-10-20T12:00:05+00:00", "user_agent": "Mozilla"},   # 5 s depois do envio
+            {"id": 2, "envio_id": "222", "data_clique": "2026-10-21T09:00:00+00:00", "user_agent": "Mozilla"},   # pessoa
+            {"id": 3, "envio_id": "333", "data_clique": "2026-10-21T10:00:00+00:00", "user_agent": "Mozilla"},
+            {"id": 4, "envio_id": "333", "data_clique": "2026-10-21T10:00:02+00:00", "user_agent": "Mozilla"},
+            {"id": 5, "envio_id": "333", "data_clique": "2026-10-21T10:00:04+00:00", "user_agent": "Mozilla"},   # rajada de 3
+        ])
+        ligados, d = metricas.ligar_aos_envios(cliques, envios)
+        self.assertEqual(d["por_metodo"], {"protocolo": 5})
+        c = metricas.classificar_cliques(ligados, envios)
+        self.assertEqual(list(c["perfil"]), ["Robô", "Pessoa", "Robô", "Robô", "Robô"])
+        from disparador import contato
+        q = contato.quem_clicou(c, envios)
+        self.assertEqual(list(q["protocolo"]), ["222"])
+        self.assertTrue(pd.notna(q["clicou_em"].iloc[0]))
+
+    def test_filtro_de_periodo_usa_data_clique(self):
+        sb = fakes.FakeSupabase(cliques_email=[
+            {"id": 1, "envio_id": "111", "data_clique": "2026-01-01T00:00:00+00:00"},
+            {"id": 2, "envio_id": "222", "data_clique": "2026-10-20T00:00:00+00:00"}])
+        from datetime import date
+        from disparador import repositorio as repo
+        self.assertEqual(len(repo.listar_cliques(sb)), 2)
+        self.assertEqual([c["id"] for c in repo.listar_cliques(sb, date(2026, 10, 1))], [2])

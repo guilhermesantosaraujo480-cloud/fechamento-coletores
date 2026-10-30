@@ -361,7 +361,7 @@ enxerga problemas de aparência; teste visualmente no navegador e no celular ap�
 | SMS fica "Pendente"/não sai | Celular desligado, sem internet ou o Android pôs o app para dormir | Carregador + internet + tirar o app da economia de bateria; ver o app |
 | SMS pausou com "5 erros seguidos" | Celular fora, limite do app ou número recusado | Conferir o app; **▶️ Retomar** |
 | Campanha de SMS não anda no domingo/à noite | Horário permitido (9h–19h, sem domingo) | Mudar na campanha ao criar (domingo/horas) |
-| Cliques aparecem mas o desempenho por modelo é 0 | Identificador do clique ≠ envio_id | Atualizado: aba Cliques liga por id/protocolo/e-mail; ver 🩺 Diagnóstico |
+| Cliques aparecem mas o desempenho por modelo é 0 | Identificador do clique ≠ envio_id (a Edge Function grava o protocolo) e coluna de data `data_clique` | Atualizado: aba Cliques liga por id/protocolo/e-mail; ver 🩺 Diagnóstico |
 | IA de modelos dá "Modelo não encontrado" | `gemini-2.0-flash` foi desligado em 06/2026 | Já corrigido (padrão `gemini-flash-latest` + escolha automática); ou escolha um nome em "Ver modelos disponíveis" |
 | Supabase "pausado" / app sem dados após dias parado | Plano gratuito pausa o projeto sem atividade por 7 dias | Restaurar no painel; o trabalhador agendado a cada 30 min já gera atividade |
 | Atualização futura quebra telas | Streamlit novo mudou algo (ex.: `use_container_width` está sendo substituído por `width`) | Abrir `?debug=1`, ver a versão e fixar `streamlit==VERSÃO` no `requirements.txt` |
@@ -405,6 +405,25 @@ enxerga problemas de aparência; teste visualmente no navegador e no celular ap�
     simples (401 **ou 403**) e as mensagens de erro agora mostram o **código HTTP** e a resposta do servidor. Motivo: no primeiro teste real
     o botão "🔌 Testar conexão" respondeu "Usuário ou senha incorretos" mesmo com os dados do Cloud server do app; sem como testar o servidor
     do app a partir do ambiente de desenvolvimento, passamos a mostrar o motivo real. 4 testes novos (`TestLoginPorToken`).
+19. **Cliques e SMS, achados lendo o Supabase e o GitHub (30/10/2026):** (a) a tabela real `cliques_email` tem a coluna de data
+    **`data_clique`** (o código só conhecia `data_hora`): por isso nenhum clique era visto como robô (80 "pessoas", 0 robôs) e o filtro de
+    período caía no "tudo"; agora `data_clique` é reconhecida (robô por rajada e por clique logo após o envio voltam a funcionar);
+    (b) a Edge Function `super-function` grava o **protocolo** em `cliques_email.envio_id` (ignora o parâmetro `envio`): a ligação por protocolo
+    já cobre isso (82 de 84 cliques ligam) e foi coberta por teste; (c) SMS: o endereço da API cadastrado em alguns celulares estava errado
+    (`…:443`, sem `https://`, `/mobile/v1`) e uma senha tinha tamanho de 16+ caracteres (provável caractere invisível colado); agora o endereço é
+    normalizado para `https://api.sms-gate.app` e usuário/senha perdem espaços/caracteres invisíveis; (d) o GitHub tinha **arquivos soltos na raiz**
+    (cópias de `campanha.py`, `fila.py`, `metricas.py`, `templates.py`, `ui.py`, `variacoes.py`, `worker.py`, `verificar.yml`, testes) por
+    upload no lugar errado — são inofensivos mas podem ser apagados; e **faltavam** `migracao.sql`…`migracao_v6.sql` e `.env.exemplo`.
+    **Sugestão (não aplicada):** trocar a Edge Function para gravar `envio_id: url.searchParams.get('envio') ?? protocolo` e guardar também o
+    protocolo (coluna nova opcional) — a plataforma já aceita os dois formatos.
+20. **Função de cliques atualizada direto no Supabase (29/10/2026, versão 3 da `super-function`; código em `supabase/super-function/redirect.ts`):**
+    grava em `cliques_email.envio_id` o parâmetro `envio` do link (id do e-mail; sem ele, o protocolo, como antes), só redireciona para o
+    WhatsApp (`wa.me`, `api.whatsapp.com`, `web.whatsapp.com`; antes qualquer endereço em `dest` era aceito, o que permitia usar o link do e-mail
+    para levar o cliente a outro site), não decodifica a mensagem duas vezes (um `&` ou `#` no texto cortava a mensagem) e **sempre** redireciona
+    mesmo se o banco falhar. Testada em Node com 8 verificações antes de publicar. Para voltar à versão antiga, publique de novo o código antigo
+    (que só gravava `protocolo`). A plataforma aceita os dois formatos de clique.
+    **Acesso do agente:** leitura do GitHub funciona; o envio de arquivos por lá exige instalar o *Claude GitHub App* no repositório
+    (https://github.com/apps/claude/installations/select_target). Até lá, atualizações seguem por zip.
 
 ---
 

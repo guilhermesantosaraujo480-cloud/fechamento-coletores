@@ -18,6 +18,7 @@ Só biblioteca padrão. `abrir` pode ser trocado nos testes.
 """
 import base64
 import json
+import unicodedata
 import urllib.error
 import urllib.request
 
@@ -58,12 +59,28 @@ def _json(corpo):
         return {}
 
 
+def limpar_credencial(valor):
+    """Tira espaços, quebras de linha e caracteres invisíveis (comuns ao copiar texto de um celular). Usuário e senha do app só têm letras e números."""
+    return "".join(c for c in str(valor or "") if c.isprintable() and not c.isspace() and unicodedata.category(c) not in ("Cf", "Zs"))
+
+
+def limpar_endereco(url):
+    """Aceita o endereço do jeito que for colado ('api.sms-gate.app:443', '.../mobile/v1'...) e devolve só 'https://servidor'."""
+    base = str(url or "").strip().rstrip("/") or URL_NUVEM
+    if not base.startswith(("http://", "https://")):
+        base = "https://" + base
+    for sufixo in ("/mobile/v1", "/3rdparty/v1", "/api/3rdparty/v1", "/api"):
+        if base.lower().endswith(sufixo):
+            base = base[: -len(sufixo)].rstrip("/")
+    if base.startswith("https://") and base.endswith(":443"):
+        base = base[: -len(":443")]
+    return base
+
+
 class Gateway:
     def __init__(self, url_base, usuario, senha, sim=None, abrir=None):
-        self.base = (url_base or URL_NUVEM).strip().rstrip("/")
-        if not self.base.startswith(("http://", "https://")):
-            self.base = "https://" + self.base
-        self.usuario, self._senha, self.sim = str(usuario or ""), str(senha or ""), sim
+        self.base = limpar_endereco(url_base)
+        self.usuario, self._senha, self.sim = limpar_credencial(usuario), limpar_credencial(senha), sim
         self._abrir = abrir or _abrir_padrao
         self._token, self._token_recusado, self.ultimo = None, False, (0, "")
 

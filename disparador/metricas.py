@@ -13,7 +13,7 @@ PADROES_ROBO = (
     "headless", "go-http-client", "java/", "libwww", "httpclient", "node-fetch", "axios", "ahrefs", "facebookexternalhit",
 )
 COLUNAS_UA = ("user_agent", "useragent", "user-agent", "ua", "agent")
-COLUNAS_TEMPO = ("data_hora", "created_at", "criado_em", "clicked_at", "timestamp", "data")
+COLUNAS_TEMPO = ("data_clique", "data_hora", "created_at", "criado_em", "clicked_at", "timestamp", "data")
 JANELA_RAJADA_SEG = 10
 CLIQUES_RAJADA = 3
 ATRASO_MINIMO_HUMANO_SEG = 20
@@ -80,6 +80,8 @@ def ligar_aos_envios(cliques, envios):
             achou, metodo = por_eid[valor], "envio_id"
         elif valor in por_id:
             achou, metodo = por_id[valor], "id do envio"
+        elif valor in por_proto:  # a Edge Function atual grava o PROTOCOLO dentro de envio_id
+            achou, metodo = por_proto[valor], "protocolo"
         elif c_pro and _norm(linha[c_pro]) in por_proto:
             achou, metodo = por_proto[_norm(linha[c_pro])], "protocolo"
         elif c_mail and _norm(linha[c_mail]) in por_email:

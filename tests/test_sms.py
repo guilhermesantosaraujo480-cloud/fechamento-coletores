@@ -439,3 +439,18 @@ class TestLoginPorToken(unittest.TestCase):
         with self.assertRaises(sms_gateway.ErroGateway) as c:
             self.gw(Nuvem([(401, {}), (404, {})])).enviar("+5511987654321", "oi")
         self.assertEqual(c.exception.tipo, "credencial")
+
+
+class TestCredenciaisColadas(unittest.TestCase):
+    """O que se cola do celular pode trazer espaço/caractere invisível; o endereço pode vir com porta ou caminho."""
+
+    def test_limpa_invisiveis_e_espacos(self):
+        self.assertEqual(sms_gateway.limpar_credencial(" zaqa0f​sb  \n"), "zaqa0fsb")
+        g = sms_gateway.Gateway("", "PM7LK8​ ", "abc​123 ")
+        self.assertEqual((g.usuario, g._senha), ("PM7LK8", "abc123"))
+
+    def test_normaliza_endereco(self):
+        for entrada in ("https://api.sms-gate.app:443", "api.sms-gate.app:443", "https://api.sms-gate.app/mobile/v1",
+                        "https://api.sms-gate.app/3rdparty/v1/", "", "  https://api.sms-gate.app  "):
+            self.assertEqual(sms_gateway.limpar_endereco(entrada), "https://api.sms-gate.app", entrada)
+        self.assertEqual(sms_gateway.limpar_endereco("http://192.168.0.5:8080"), "http://192.168.0.5:8080")
