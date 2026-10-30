@@ -465,3 +465,17 @@ class TestTesteComPermissaoLimitada(unittest.TestCase):
     def test_401_continua_sendo_senha_errada(self):
         ok, msg = sms_gateway.Gateway("", "USUARIO1", "senha", abrir=Nuvem([(401, {}), (401, {})])).testar()
         self.assertFalse(ok)
+
+
+class TestIdentificacaoDoCliente(unittest.TestCase):
+    def test_envia_user_agent_proprio_e_mostra_resposta_nao_json(self):
+        vistos = []
+
+        def abrir(req, timeout):
+            vistos.append(req.get_header("User-agent"))
+            return 403, b"<html>error code: 1010</html>"
+        g = sms_gateway.Gateway("", "USUARIO1", "senha", abrir=abrir)
+        with self.assertRaises(sms_gateway.ErroGateway) as c:
+            g.enviar("+5511987654321", "oi")
+        self.assertTrue(all(v.startswith("SistemaColetas") for v in vistos))
+        self.assertIn("1010", str(c.exception))

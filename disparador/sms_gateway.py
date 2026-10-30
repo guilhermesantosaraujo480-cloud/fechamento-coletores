@@ -27,6 +27,7 @@ CAMINHOS = ("/3rdparty/v1/messages", "/3rdparty/v1/message")
 CAMINHO_DISPOSITIVOS = "/3rdparty/v1/devices"
 CAMINHO_TOKEN = "/3rdparty/v1/auth/token"
 ESCOPOS_TOKEN = ["messages:send", "messages:read", "messages:list", "devices:list"]
+USER_AGENT = "SistemaColetas/1.0 (+envio de SMS)"
 TEMPO_LIMITE = 25
 TTL_PADRAO = 7200  # se o celular ficar desligado, o pedido vence em 2 h em vez de sair atrasado
 
@@ -82,7 +83,7 @@ class Gateway:
         self.base = limpar_endereco(url_base)
         self.usuario, self._senha, self.sim = limpar_credencial(usuario), limpar_credencial(senha), sim
         self._abrir = abrir or _abrir_padrao
-        self._token, self._token_recusado, self.ultimo = None, False, (0, "")
+        self._token, self._token_recusado, self.ultimo, self.bruto = None, False, (0, ""), ""
 
     def _pedido(self, metodo, caminho, corpo=None, so_basico=False):
         """(status, json). Usa Bearer se já temos token; no 401/403 tenta trocar usuário/senha por token e repete uma vez."""
@@ -100,11 +101,13 @@ class Gateway:
             autorizacao = "Basic " + base64.b64encode(f"{self.usuario}:{self._senha}".encode()).decode()
         dados = json.dumps(corpo).encode("utf-8") if corpo is not None else None
         req = urllib.request.Request(self.base + caminho, data=dados, method=metodo, headers={
-            "Authorization": autorizacao, "Content-Type": "application/json", "Accept": "application/json"})
+            "Authorization": autorizacao, "Content-Type": "application/json", "Accept": "application/json",
+            "User-Agent": USER_AGENT})  # sem isto o urllib se identifica como "Python-urllib" e firewalls (Cloudflare) respondem 403
         try:
             status, resp = self._abrir(req, TEMPO_LIMITE)
         except (urllib.error.URLError, TimeoutError, OSError) as erro:
             raise ErroGateway(f"Sem conexão com o servidor do aplicativo: {erro}") from erro
+        self.bruto = "" if _json(resp) else " ".join(resp.decode("utf-8", "replace").split())[:120]
         return status, _json(resp)
 
     def _obter_token(self):
@@ -123,6 +126,7 @@ class Gateway:
 
     def _detalhe(self):
         status, msg = self.ultimo
+        msg = msg or (f"resposta: {self.bruto}" if self.bruto else "")
         return f"HTTP {status}" + (f": {msg}" if msg else "")
 
     def enviar(self, telefone, texto, ttl=TTL_PADRAO):

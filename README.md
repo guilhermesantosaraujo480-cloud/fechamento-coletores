@@ -427,6 +427,10 @@ enxerga problemas de aparência; teste visualmente no navegador e no celular ap�
 21. **Teste de conexão do SMS e erro 403 (29/10/2026):** no teste real o app respondeu **HTTP 403** (não 401) ao *listar celulares*. 403 = login
     reconhecido, mas sem permissão para essa consulta (a documentação do app usa o login simples só para **enviar**); 401 = usuário/senha
     errados. Agora o 🔌 Testar conexão trata 403 como "login aceito" e manda confirmar com o **SMS de teste** (aba ✉️ Enviar); 401 continua sendo erro.
+22. **SMS, 403 também no envio (29/10/2026):** o teste real mostrou "HTTP 403" até ao enviar, sem texto do servidor. Hipótese principal: o `urllib`
+    se identifica como "Python-urllib" e o firewall do servidor do app (Cloudflare) devolve 403 a esse tipo de cliente. O cliente agora se identifica
+    com um `User-Agent` próprio (`SistemaColetas/1.0`) e, quando a resposta não é JSON, o erro mostra o início do texto recebido (ex.: "error code: 1010").
+    Se ainda der 403, esse texto diz se é firewall ou permissão da conta.
 
 ---
 
