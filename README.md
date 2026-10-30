@@ -431,6 +431,7 @@ enxerga problemas de aparência; teste visualmente no navegador e no celular ap�
     se identifica como "Python-urllib" e o firewall do servidor do app (Cloudflare) devolve 403 a esse tipo de cliente. O cliente agora se identifica
     com um `User-Agent` próprio (`SistemaColetas/1.0`) e, quando a resposta não é JSON, o erro mostra o início do texto recebido (ex.: "error code: 1010").
     Se ainda der 403, esse texto diz se é firewall ou permissão da conta.
+    **Confirmado em 29/10/2026: o SMS de teste chegou** depois do `User-Agent` próprio — a causa era mesmo o firewall barrando o `Python-urllib`.
 
 ---
 
