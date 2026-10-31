@@ -14,16 +14,17 @@ from ui.componentes import baixar_excel, cabecalho, cartao, erro_banco, metricas
 
 
 def _abas_excel(resumo, coletas, vales, premios):
-    aprov = coletas[coletas["status"] == "Aprovado"][["data", "coletor", "quantidade", "valor_total", "pago"]].copy()
+    aprov = coletas[coletas["status"] == "Aprovado"][["data", "coletor", "quantidade", "valor_total", "pago", "dividida_com"]].copy()
     aprov["data"] = aprov["data"].map(data_br)
     v = vales[["data", "coletor", "valor_vale", "descricao"]].copy()
     v["data"] = v["data"].map(data_br)
     p = premios[["data", "coletor", "valor_premiacao", "descricao"]].copy()
     p["data"] = p["data"].map(data_br)
     return {
-        "Resumo por Coletor": fin.adicionar_total(resumo),
+        "Resumo por Coletor": fin.adicionar_total(resumo, coletas),
         "Coletas aprovadas": aprov.rename(columns={"data": "Data", "coletor": "Coletor", "quantidade": "Qtd",
-                                                   "valor_total": "Valor (R$)", "pago": "Pago"}),
+                                                   "valor_total": "Valor (R$)", "pago": "Pago",
+                                                   "dividida_com": "Dividida com"}),
         "Vales": v.rename(columns={"data": "Data", "coletor": "Coletor", "valor_vale": "Valor (R$)", "descricao": "Motivo"}),
         "Premiações": p.rename(columns={"data": "Data", "coletor": "Coletor", "valor_premiacao": "Valor (R$)",
                                         "descricao": "Motivo"}),
@@ -86,7 +87,7 @@ def render(sb, filtro):
     with esquerda:
         with cartao():
             st.markdown("**Resumo por coletor**")
-            tabela = fin.formatar_moeda(fin.adicionar_total(resumo), ["Bruto", "Premiações", "Vales", "Líquido", "Saldo anterior", "A pagar", "Não pago"])
+            tabela = fin.formatar_moeda(fin.adicionar_total(resumo, coletas), ["Bruto", "Premiações", "Vales", "Líquido", "Saldo anterior", "A pagar", "Não pago"])
             st.dataframe(tabela, hide_index=True, use_container_width=True)
             baixar_excel("📊 Baixar relatório em Excel (.xlsx)",
                          gerar_excel(_abas_excel(resumo, coletas, vales, premios)),

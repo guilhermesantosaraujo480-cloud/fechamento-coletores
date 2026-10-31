@@ -36,8 +36,8 @@
   "sha256": "aa3bf6ddb35940a6f7abe4791d2321de0efd53708aabb3e2cc6744fe1de5e0d2"
  },
  "README.md": {
-  "bytes": 50078,
-  "sha256": "901dbd2f8183b100f8c8a68aecfcc6144470439730b1f3dd0e51f238c722a869"
+  "bytes": 51140,
+  "sha256": "12bc471ab4d1679a062b59b7628ac8dee4155bc039cc669a2360e7e17cd1d3a7"
  },
  "app.py": {
   "bytes": 4495,
@@ -107,13 +107,17 @@
   "bytes": 781,
   "sha256": "62f5afc8cc4b730c931c2ad59c7e192e24309bce8e44f6b2cca392f1ddbb6a37"
  },
+ "core/divisao.py": {
+  "bytes": 5119,
+  "sha256": "bbe89376951d48436227f4f686c3b50353a1ff6fa2e3df95d7b4e9d6b85c4f8a"
+ },
  "core/exportacao.py": {
   "bytes": 1953,
   "sha256": "1efcb1612babf0c2adf10d830515d5793d088d0a23855fb1cbd7f2f78e481ec7"
  },
  "core/financeiro.py": {
-  "bytes": 11031,
-  "sha256": "ec0e6a974e8c4a95a32cc723dbf418e30222beba78226580347547a4a19b98df"
+  "bytes": 12056,
+  "sha256": "ca2644684069156035a58baed6df994a6b0ca772b7af2d3398493b3f2f50153b"
  },
  "core/leitor_comprovante.py": {
   "bytes": 4097,
@@ -251,6 +255,10 @@
   "bytes": 549,
   "sha256": "158d1b817d2ddd11c67356730e73b3b2e49b4a70dce2196231f339d6878df8ca"
  },
+ "migracao_v9.sql": {
+  "bytes": 807,
+  "sha256": "fcb9b3caba478ff0c63ea792ec3d9c12a322e47c8aeaccbbf2fb080087c6cf4d"
+ },
  "requirements-agente.txt": {
   "bytes": 43,
   "sha256": "bb3a3dc9848d8b324261e37bdd23a3a36099119324387766f970aa776f88e580"
@@ -351,6 +359,10 @@
   "bytes": 11610,
   "sha256": "fbd40036c9fb73507c82ed40df75ea038bb2da0ce9335c75c7fe88c8f5e5e7a9"
  },
+ "tests/test_divisao.py": {
+  "bytes": 3794,
+  "sha256": "788c860051ee05bf36f42189ee71a41b8a0d31bec512450301ab9baa5e1af053"
+ },
  "tests/test_fila.py": {
   "bytes": 10856,
   "sha256": "518873eb9f772b5d5141d2ea0590bc113c7317f1556b1cdd160ccfac8edbf1b9"
@@ -400,16 +412,16 @@
   "sha256": "525ce1fff4ba4c47e64afb51b396895e1c56b7bb2a3e45965f9874cfc73f22ce"
  },
  "ui/adm/coletas.py": {
-  "bytes": 10586,
-  "sha256": "e2afd7fcc9af6f4bf3a959a22c136ca6c3a90d7be34f7cfff87ba4123d881dd9"
+  "bytes": 15842,
+  "sha256": "58c3b97ffc49978f4246a845b08ccdacf365455dccf2d259ebf4b97fc589caa2"
  },
  "ui/adm/emails.py": {
   "bytes": 176,
   "sha256": "a736e31eef67d4d6654f523e3d7217db41853897d11f4a26930cfd01f83a19ef"
  },
  "ui/adm/fechamento.py": {
-  "bytes": 5574,
-  "sha256": "b3673433c0fb7e6dcb5087f4640d118771c84c63a55f24374465855a3cac32ed"
+  "bytes": 5691,
+  "sha256": "fc808a18dbd3e3248efd6f5cc71b8349fe5a07847c3c767ea172acad45ec3e59"
  },
  "ui/adm/filtros.py": {
   "bytes": 1481,
@@ -456,8 +468,8 @@
   "sha256": "3fc44720392de984ee1a397bf761b4216df3ce0471d4046de2800014c57adac3"
  },
  "ui/coletor/extrato.py": {
-  "bytes": 5294,
-  "sha256": "cee3accd0fdbc39ff8797cbc8ca72c54781247fcf4f96cfed9cfbba8d495c6e0"
+  "bytes": 5534,
+  "sha256": "68e770d081a6d6603f2ada92c8c1f8227ebcef1d7e2a601bcb2c5d6740d1e67e"
  },
  "ui/componentes.py": {
   "bytes": 4113,

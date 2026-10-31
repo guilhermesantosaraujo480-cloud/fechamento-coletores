@@ -11,7 +11,8 @@ from datetime import timedelta
 from .utils import brl, data_br, limites_quinzena
 
 STATUS = ("Pendente", "Aprovado", "Recusado")
-COLS_COLETAS = ["id", "data", "coletor", "quantidade", "foto_url", "status", "valor_total", "pago", "qtd_acrescimo"]
+COLS_COLETAS = ["id", "data", "coletor", "quantidade", "foto_url", "status", "valor_total", "pago", "qtd_acrescimo",
+                "divisao_de", "dividida_com"]
 COLS_VALES = ["id", "data", "coletor", "valor_vale", "descricao", "foto_url"]
 COLS_PREMIOS = ["id", "data", "coletor", "valor_premiacao", "descricao"]
 
@@ -35,8 +36,8 @@ def _preparar(linhas, colunas, numericas=(), inteiras=(), booleanas=(), textos=(
 
 
 def df_coletas(linhas):
-    return _preparar(linhas, COLS_COLETAS, numericas=["valor_total"], inteiras=["quantidade", "qtd_acrescimo"],
-                     booleanas=["pago"], textos=["coletor", "status"])
+    return _preparar(linhas, COLS_COLETAS, numericas=["valor_total"], inteiras=["quantidade", "qtd_acrescimo", "divisao_de"],
+                     booleanas=["pago"], textos=["coletor", "status", "dividida_com"])
 
 
 def df_vales(linhas):
@@ -82,12 +83,24 @@ class Fechamento:
         return getattr(self, campo) / 100
 
 
+def sem_duplicadas(coletas):
+    """Coletas divididas entre dois coletores existem em DUAS linhas (uma por coletor, cada uma com a sua parte do valor), mas os
+    aparelhos são os mesmos. Para contar aparelhos no total, a linha do parceiro sai quando a coleta original está presente.
+    (Filtrando por UM coletor, a original não está presente e a linha dele conta normalmente.)"""
+    if coletas.empty or "divisao_de" not in coletas.columns:
+        return coletas
+    filha = coletas["divisao_de"] > 0
+    if not filha.any():
+        return coletas
+    return coletas[~(filha & coletas["divisao_de"].isin(set(coletas["id"])))]
+
+
 def calcular_fechamento(coletas, vales, premios):
     aprovadas = coletas[coletas["status"] == "Aprovado"] if not coletas.empty else coletas
     bruto = int(_centavos(aprovadas["valor_total"]).sum()) if not aprovadas.empty else 0
     nao_pagas = aprovadas[~aprovadas["pago"]] if not aprovadas.empty else aprovadas
     return Fechamento(
-        aparelhos=int(aprovadas["quantidade"].sum()) if not aprovadas.empty else 0,
+        aparelhos=int(sem_duplicadas(aprovadas)["quantidade"].sum()) if not aprovadas.empty else 0,
         bruto=bruto,
         premios=int(_centavos(premios["valor_premiacao"]).sum()) if not premios.empty else 0,
         vales=int(_centavos(vales["valor_vale"]).sum()) if not vales.empty else 0,
@@ -190,12 +203,15 @@ def resumo_por_coletor(coletas, vales, premios, coletores=(), saldos=None):
     return pd.DataFrame(linhas, columns=colunas)
 
 
-def adicionar_total(resumo):
+def adicionar_total(resumo, coletas=None):
+    """Linha TOTAL GERAL. Com `coletas`, os aparelhos de coletas divididas entram uma vez só (não duas)."""
     if resumo.empty:
         return resumo
     total = {"Coletor": "TOTAL GERAL"}
     for c in resumo.columns[1:]:
         total[c] = round(float(resumo[c].sum()), 2) if c != "Aparelhos" else int(resumo[c].sum())
+    if coletas is not None and not coletas.empty:
+        total["Aparelhos"] = int(sem_duplicadas(_aprovadas(coletas))["quantidade"].sum())
     return pd.concat([resumo, pd.DataFrame([total])], ignore_index=True)
 
 
@@ -205,6 +221,7 @@ def serie_diaria(coletas, ini, fim):
     dias = pd.date_range(ini_d, fim_d, freq="D")
     base = pd.Series(0, index=dias, dtype="int64")
     aprov = coletas[coletas["status"] == "Aprovado"] if not coletas.empty else coletas
+    aprov = sem_duplicadas(aprov)
     if not aprov.empty:
         por_dia = aprov.groupby(pd.to_datetime(aprov["data"], errors="coerce"))["quantidade"].sum()
         por_dia = por_dia[por_dia.index.notna()]

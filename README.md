@@ -441,6 +441,13 @@ enxerga problemas de aparência; teste visualmente no navegador e no celular ap�
     sistema e vai ao Google para leitura (aviso na tela). Código em `core/leitor_comprovante.py` (conferência, sem rede) e `disparador/ia.py:ler_comprovante`.
     Coluna nova `vales_coleta.comprovante_id` (`migracao_v8.sql`, **já aplicada no Supabase em 30/10/2026**); sem a coluna o vale ainda é lançado, só sem a checagem de repetição.
     15 testes novos (290 no total). **Pendente:** testar com comprovantes reais (Pix de bancos diferentes) e ajustar o texto pedido à IA se algum banco falhar.
+24. **Dividir coleta entre dois coletores com um só login (31/10/2026):** em *Coletas*: (a) nos cartões de **Pendentes** há "➗ Dividir com (opcional)" —
+    ao aprovar, o valor é dividido meio a meio; (b) nova seção **➗ Dividir coletas** divide em lote coletas **já aprovadas e NÃO pagas** (retroativo) e
+    tem **↩️ Desfazer divisão**. Funcionamento (`core/divisao.py`): a coleta original fica com a parte do dono e nasce uma linha para o parceiro com a outra
+    parte (centavos; sobra fica com o dono); as duas mostram o **total de aparelhos** (ex.: 21 un, R$ 105 cada). Colunas `coletas.divisao_de` (só na linha do
+    parceiro) e `coletas.dividida_com` (`migracao_v9.sql`, **já aplicada no Supabase em 31/10/2026**). Totais gerais usam `fin.sem_duplicadas` (aparelho conta
+    uma vez); fechamento/extrato de cada coletor mostram o total de aparelhos e a sua parte. Coleta dividida não pode ser editada nem ter o status mudado
+    (desfaça antes); paga não divide nem desfaz. Sempre 2 pessoas, 50/50. 6 testes novos (296 no total).
 
 ---
 

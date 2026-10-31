@@ -31,6 +31,8 @@ def _envios(sb, coletas):
                           for s, p in zip(ordenadas["status"], ordenadas["pago"])]
     tabela["status"] = tabela["status"].map(lambda s: ROTULO_STATUS.get(s, s))
     tabela["valor_total"] = tabela["valor_total"].map(brl)
+    # coleta dividida com outro coletor: mostra o total de aparelhos e com quem o valor foi dividido
+    tabela["valor_total"] = [f"{v} (½ com {d})" if d else v for v, d in zip(tabela["valor_total"], ordenadas["dividida_com"].fillna(""))]
     st.dataframe(tabela[["data", "quantidade", "valor_total", "status", "situacao"]].rename(columns={
         "data": "Data", "quantidade": "Qtd", "valor_total": "Valor", "status": "Status", "situacao": "Pagamento"}),
         hide_index=True, use_container_width=True)

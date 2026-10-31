@@ -3,7 +3,7 @@ from datetime import date
 
 import streamlit as st
 
-from core import auditoria, dados, sessao
+from core import auditoria, dados, divisao, sessao
 from core import financeiro as fin
 from core.config import valor_por_coleta
 from core.utils import brl, data_br, em_lotes
@@ -26,6 +26,9 @@ def _editar(sb, linha, prefixo):
 
     `quantidade` e `valor_total` guardam o TOTAL (o que o coletor recebe); o acréscimo é só um controle interno
     para o administrador enxergar quantos aparelhos foram acrescentados — não aparece no fechamento."""
+    if getattr(linha, "dividida_com", None) or int(getattr(linha, "divisao_de", 0) or 0) > 0:
+        st.info("Esta coleta foi dividida entre dois coletores. Para editar, desfaça a divisão em **➗ Dividir coletas**.")
+        return
     acr_atual = int(getattr(linha, "qtd_acrescimo", 0) or 0)
     qtd_atual = int(linha.quantidade)
     real_atual = max(qtd_atual - acr_atual, 0)
@@ -64,12 +67,20 @@ def _editar(sb, linha, prefixo):
         st.rerun()
 
 
-def _decidir(sb, linha, status):
-    """Muda o status só se ainda estiver Pendente (evita dois admins decidirem a mesma coleta)."""
+def _decidir(sb, linha, status, parceiro=None):
+    """Muda o status só se ainda estiver Pendente (evita dois admins decidirem a mesma coleta). Com `parceiro`, divide ao aprovar."""
     usuario = sessao.usuario_atual()["usuario"]
-    sb.table("coletas").update({"status": status}).eq("id", int(linha.id)).eq("status", "Pendente").execute()
+    mudou = sb.table("coletas").update({"status": status}).eq("id", int(linha.id)).eq("status", "Pendente").execute().data
     auditoria.registrar(sb, usuario, f"coleta_{status.lower()}",
                         f"id={linha.id} coletor={linha.coletor} qtd={linha.quantidade} valor={linha.valor_total}")
+    if parceiro and status == "Aprovado" and mudou:
+        try:
+            divisao.dividir(sb, linha.id, parceiro)
+            auditoria.registrar(sb, usuario, "coleta_dividida", f"id={linha.id} {linha.coletor} + {parceiro}")
+        except divisao.ErroDivisao as erro:
+            st.error(f"Aprovada, mas não dividi: {erro}")
+            dados.invalidar()
+            return
     dados.invalidar()
     st.toast(f"Coleta {status.lower()}.", icon="✅")
     st.rerun()
@@ -94,6 +105,10 @@ def _pendentes(sb, pendentes):
             st.toast(f"{len(ids)} coletas aprovadas.", icon="✅")
             st.rerun()
 
+    try:
+        nomes = list(dados.nomes_coletores(sb))
+    except Exception:  # noqa: BLE001 — sem a lista, só some a opção de dividir
+        nomes = []
     colunas = st.columns(3)
     for i, linha in enumerate(ordenadas.head(MAX_CARTOES).itertuples()):
         with colunas[i % 3]:
@@ -104,9 +119,11 @@ def _pendentes(sb, pendentes):
                            + (f" · ➕ {int(linha.qtd_acrescimo)} acrescentados" if linha.qtd_acrescimo else ""))
                 with st.expander("✏️ Editar / acrescentar"):
                     _editar(sb, linha, "ed")
+                parceiro = st.selectbox("➗ Dividir com (opcional)", ["—"] + [n for n in nomes if n != linha.coletor],
+                                        key=f"dv_{linha.id}", help="Dois coletores com um só login: aprova e divide o valor meio a meio.")
                 b1, b2 = st.columns(2)
                 if b1.button("✓ Aprovar", key=f"ap_{linha.id}", type="primary", use_container_width=True):
-                    _decidir(sb, linha, "Aprovado")
+                    _decidir(sb, linha, "Aprovado", None if parceiro == "—" else parceiro)
                 if b2.button("✕ Recusar", key=f"rec_{linha.id}", use_container_width=True):
                     _decidir(sb, linha, "Recusado")
 
@@ -122,15 +139,17 @@ def _lancamentos(sb, coletas, filtro):
         st.caption(f"Mostrando os {MAX_LINHAS_TABELA} mais recentes de {len(coletas)}. Estreite o período para ver os demais.")
 
     original = ordenadas.set_index("id")
-    tela = original[["data", "coletor", "quantidade", "qtd_acrescimo", "valor_total", "status", "pago"]].copy()
+    tela = original[["data", "coletor", "quantidade", "qtd_acrescimo", "valor_total", "status", "pago", "dividida_com"]].copy()
+    tela["dividida_com"] = tela["dividida_com"].fillna("")
     tela["data"] = tela["data"].map(data_br)
     st.caption("Edite **Status** e **Pago** direto na tabela e clique em salvar. Dá para reabrir uma coleta recusada.")
     editado = st.data_editor(
         tela, key="editor_coletas", use_container_width=True,
-        disabled=["data", "coletor", "quantidade", "qtd_acrescimo", "valor_total"],
+        disabled=["data", "coletor", "quantidade", "qtd_acrescimo", "valor_total", "dividida_com"],
         column_config={
             "data": "Data", "coletor": "Coletor", "quantidade": "Qtd", "qtd_acrescimo": "➕ Acresc.",
             "valor_total": st.column_config.NumberColumn("Valor", format="R$ %.2f"),
+            "dividida_com": "➗ Dividida com",
             "status": st.column_config.SelectboxColumn("Status", options=list(fin.STATUS), required=True),
             "pago": st.column_config.CheckboxColumn("Pago (controle)"),
         },
@@ -140,6 +159,9 @@ def _lancamentos(sb, coletas, filtro):
     for id_, nova in editado.iterrows():
         antes = original.loc[id_]
         pago_novo = bool(nova["pago"]) and nova["status"] == "Aprovado"  # só aprovada pode estar paga
+        if antes.get("dividida_com") and nova["status"] != "Aprovado":
+            st.warning(f"Coleta #{id_} está dividida: desfaça a divisão antes de mudar o status.")
+            continue
         if nova["status"] != antes["status"] or pago_novo != bool(antes["pago"]):
             mudancas.append((int(id_), nova["status"], pago_novo, antes))
 
@@ -176,6 +198,65 @@ def _lancamentos(sb, coletas, filtro):
                     st.rerun()
 
 
+def _dividir(sb, coletas):
+    """Divide coletas aprovadas e não pagas entre dois coletores (50/50) — uma a uma ou em lote — e desfaz divisões."""
+    usuario = sessao.usuario_atual()["usuario"]
+    try:
+        nomes = list(dados.nomes_coletores(sb))
+    except Exception as erro:  # noqa: BLE001
+        erro_banco(erro)
+        return
+    st.caption("Para dois coletores que usam o mesmo login: o valor é dividido **meio a meio** e cada um vê o total de aparelhos. "
+               "Nos totais gerais os aparelhos contam uma vez só. Só coletas **aprovadas e não pagas**.")
+    if coletas.empty:
+        vazio("Nenhuma coleta no período.")
+        return
+    elegiveis = coletas[coletas.apply(lambda r: not divisao.motivo_de_nao_dividir(r), axis=1)].sort_values(["data", "id"], ascending=False)
+    if elegiveis.empty:
+        st.info("Nenhuma coleta elegível (aprovada, não paga, ainda não dividida) neste período.")
+    else:
+        rot = {int(r.id): f"#{r.id} · {data_br(r.data)} · {r.coletor} · {r.quantidade} un · {brl(r.valor_total)}"
+               for r in elegiveis.head(MAX_LINHAS_TABELA).itertuples()}
+        marcadas = st.multiselect("Coletas a dividir", list(rot), format_func=lambda i: rot[i], key="dv_sel")
+        donos = {str(elegiveis[elegiveis["id"] == i]["coletor"].iloc[0]) for i in marcadas}
+        parceiro = st.selectbox("Dividir com", ["—"] + [n for n in nomes if n not in donos or len(donos) > 1], key="dv_parc")
+        if marcadas and parceiro != "—":
+            ex = elegiveis[elegiveis["id"] == marcadas[0]].iloc[0]
+            dono_v, parc_v = divisao.partes(ex["valor_total"])
+            st.write(f"Exemplo (#{int(ex['id'])}): **{int(ex['quantidade'])} un** · {ex['coletor']} fica com {brl(dono_v)} e {parceiro} com {brl(parc_v)}.")
+            if confirmar(f"Confirmo dividir {len(marcadas)} coleta(s) com {parceiro}", "chk_dividir") and st.button("➗ Dividir", type="primary"):
+                feitas, falhas = 0, []
+                for i in marcadas:
+                    try:
+                        divisao.dividir(sb, i, parceiro)
+                        auditoria.registrar(sb, usuario, "coleta_dividida", f"id={i} + {parceiro}")
+                        feitas += 1
+                    except divisao.ErroDivisao as erro:
+                        falhas.append(str(erro))
+                dados.invalidar()
+                if falhas:
+                    st.error(" | ".join(falhas))
+                st.toast(f"{feitas} coleta(s) dividida(s).", icon="✅")
+                if not falhas:
+                    st.rerun()
+    divididas = coletas[coletas["divisao_de"] > 0].sort_values("id", ascending=False) if "divisao_de" in coletas else coletas.iloc[0:0]
+    if not divididas.empty:
+        with st.expander(f"↩️ Desfazer divisão ({len(divididas)})"):
+            rot = {int(r.id): f"#{r.divisao_de} {r.dividida_com} ⇄ {r.coletor} · {data_br(r.data)} · {r.quantidade} un · {'pago' if r.pago else brl(r.valor_total)}"
+                   for r in divididas.head(MAX_LINHAS_TABELA).itertuples()}
+            escolha = st.selectbox("Divisão", list(rot), format_func=lambda i: rot[i], key="dv_undo")
+            if st.button("↩️ Desfazer esta divisão", key="dv_undo_btn"):
+                try:
+                    pai = divisao.desfazer(sb, escolha)
+                except divisao.ErroDivisao as erro:
+                    st.error(str(erro))
+                else:
+                    auditoria.registrar(sb, usuario, "coleta_divisao_desfeita", f"original=#{pai}")
+                    dados.invalidar()
+                    st.toast("Divisão desfeita.", icon="✅")
+                    st.rerun()
+
+
 def render(sb, filtro):
     try:
         coletas, _, _, pendentes = dados.carregar_financeiro(sb, filtro.ini, filtro.fim, filtro.coletor)
@@ -187,8 +268,10 @@ def render(sb, filtro):
     metricas([("⏳ Pendentes (todas as datas)", f"{len(pendentes)}"),
               ("✅ Aprovadas no período", f"{f.aparelhos} un"),
               ("💳 Aprovado e não pago", brl(f.reais("nao_pago")))])
-    secao = navegacao(["⏳ Pendentes", "📑 Lançamentos do período"], "nav_coletas")
+    secao = navegacao(["⏳ Pendentes", "📑 Lançamentos do período", "➗ Dividir coletas"], "nav_coletas")
     if secao == "⏳ Pendentes":
         _pendentes(sb, pendentes)
+    elif secao == "➗ Dividir coletas":
+        _dividir(sb, coletas)
     else:
         _lancamentos(sb, coletas, filtro)
