@@ -1,4 +1,5 @@
 """IA gratuita (Google Gemini): só gera RASCUNHOS de modelo. O disparo usa apenas modelos que você aprovou."""
+import base64
 import json
 import re
 
@@ -124,3 +125,40 @@ def avisos_do_modelo(assunto, texto):
     if "<" in conjunto and ">" in conjunto:
         avisos.append("Contém HTML — será exibido como texto.")
     return avisos
+
+
+def ler_comprovante(chave, modelo, imagem_jpeg, prompt, http=requests):
+    """Manda a foto do comprovante (JPEG em bytes) para o Gemini e devolve o JSON lido (dict). A conferência fica em core.leitor_comprovante.
+    Atenção: a imagem sai do sistema e vai para o Google."""
+    if not chave:
+        raise ErroIA("Configure GEMINI_API_KEY nos secrets (chave grátis em aistudio.google.com).")
+    corpo = {
+        "contents": [{"parts": [{"text": prompt},
+                                {"inline_data": {"mime_type": "image/jpeg", "data": base64.b64encode(imagem_jpeg).decode()}}]}],
+        "generationConfig": {"responseMimeType": "application/json", "temperature": 0},
+    }
+
+    def pedir(nome):
+        try:
+            return http.post(f"{BASE}/models/{nome}:generateContent", headers=_cabecalho(chave), json=corpo, timeout=60)
+        except requests.RequestException as erro:
+            raise ErroIA(f"Não foi possível falar com a IA: {erro}") from erro
+    r = pedir(modelo or MODELO_PADRAO)
+    if r.status_code == 404:
+        try:
+            alternativo = escolher_modelo_flash(listar_modelos_gemini(chave, http))
+        except (ErroIA, requests.RequestException):
+            alternativo = None
+        if alternativo and alternativo != (modelo or MODELO_PADRAO):
+            r = pedir(alternativo)
+    if r.status_code != 200:
+        raise ErroIA(_traduzir_http(r))
+    try:
+        dados = _extrair_json(r.json()["candidates"][0]["content"]["parts"][0]["text"])
+    except (KeyError, IndexError, ValueError) as erro:
+        raise ErroIA("A IA devolveu uma resposta fora do formato esperado. Tente de novo ou preencha à mão.") from erro
+    if isinstance(dados, list):
+        dados = dados[0] if dados else {}
+    if not isinstance(dados, dict):
+        raise ErroIA("A IA devolveu uma resposta fora do formato esperado. Tente de novo ou preencha à mão.")
+    return dados

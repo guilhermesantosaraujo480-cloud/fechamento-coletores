@@ -36,8 +36,8 @@
   "sha256": "aa3bf6ddb35940a6f7abe4791d2321de0efd53708aabb3e2cc6744fe1de5e0d2"
  },
  "README.md": {
-  "bytes": 47334,
-  "sha256": "7071d32ae2ed69b243d7e8bbf813b788de03fa5694e6990cebaa85785d6b0dc4"
+  "bytes": 48711,
+  "sha256": "6fa71ff5e11e7480f62e9998944bdf2ef33f675859f901fe00827a7d367bf0d7"
  },
  "app.py": {
   "bytes": 4495,
@@ -115,6 +115,10 @@
   "bytes": 11031,
   "sha256": "ec0e6a974e8c4a95a32cc723dbf418e30222beba78226580347547a4a19b98df"
  },
+ "core/leitor_comprovante.py": {
+  "bytes": 4097,
+  "sha256": "05956d0f9e7cb19796937113b30ea3865cc2b1e85824c5175c9857a8a0d82672"
+ },
  "core/sessao.py": {
   "bytes": 2141,
   "sha256": "95408a3c686e7f6521b248294169751818e5d6ff18bdd61bb7926db9ed825f13"
@@ -156,8 +160,8 @@
   "sha256": "31f5cbdc95b1217ecce0f413856ce8790e44e859b491cd07401661ae66a7ef28"
  },
  "disparador/ia.py": {
-  "bytes": 6107,
-  "sha256": "c635105c985decbf948c890cbbf2ec2921d3ba4be04da92cb6d71a0680eaaa2a"
+  "bytes": 8028,
+  "sha256": "0258eeb2fa5f08ab9eba4911c47ccca218f12c1388b97bf462bae1ddf7d14418"
  },
  "disparador/metricas.py": {
   "bytes": 9022,
@@ -242,6 +246,10 @@
  "migracao_v7.sql": {
   "bytes": 6001,
   "sha256": "4fdd39aa25ffeff78c1137d8d3075a689f6624b2554390ba9343c0f33a549093"
+ },
+ "migracao_v8.sql": {
+  "bytes": 549,
+  "sha256": "158d1b817d2ddd11c67356730e73b3b2e49b4a70dce2196231f339d6878df8ca"
  },
  "requirements-agente.txt": {
   "bytes": 43,
@@ -331,6 +339,10 @@
   "bytes": 1972,
   "sha256": "712ac42de5103b48db051bf3c39aedd63924924890312aa23ac1defa440ebe74"
  },
+ "tests/test_comprovante.py": {
+  "bytes": 8911,
+  "sha256": "3657e671b43d83be5ad5facf873775d201e19b92283006cc28883bba4b58187b"
+ },
  "tests/test_core.py": {
   "bytes": 12406,
   "sha256": "561c6e7a49b45d8125d563d1499cd6c5a967a4494d4bebbb9e58662d817cdf11"
@@ -416,8 +428,8 @@
   "sha256": "c8b2913fd4d01ce8627035a1a6fd1f6bf94f33ac0ea0f7846a45ee1907b42fc8"
  },
  "ui/adm/vales.py": {
-  "bytes": 4375,
-  "sha256": "897ed8666778379685569eb0845247a332b7efc1e472d5e7752ef828554aeae7"
+  "bytes": 9466,
+  "sha256": "e4d39f6a6ab6814b6a03b35aebe28966a1b9d36260ce766bb0a6f67424caca94"
  },
  "ui/adm/visao_geral.py": {
   "bytes": 4682,

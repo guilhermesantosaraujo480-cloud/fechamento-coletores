@@ -47,6 +47,7 @@ migracao*.sql               Criação/ajuste das tabelas (rodar em ordem; podem 
 core/                       Regras de negócio e infraestrutura (sem telas)
   utils.py                  Datas, dinheiro (brl), quinzenas (limites_quinzena, PERIODOS), em_lotes, escapar
   config.py                 cfg(): lê st.secrets sem quebrar;  valor_por_coleta()
+  leitor_comprovante.py     Conferência da leitura de comprovantes feita pela IA (valor, data, nome, código); sem rede
   db.py                     Conexão única com o Supabase (cache_resource)
   consulta.py               buscar_todos (pagina de 1000 em 1000), contar, filtros no servidor
   financeiro.py             Fechamento em CENTAVOS, quinzenas, saldo anterior, acréscimos, resumo por coletor
@@ -148,6 +149,7 @@ Rode em ordem no **SQL Editor** (todos podem ser repetidos sem problema; foram t
 | `migracao_v4.sql` | campanhas, campanha_destinos (fila), `rota_coletores.tipo`, rota_apelidos, rota_snapshots |
 | `migracao_v5.sql` | `coletas.qtd_acrescimo`, bipagem_lotes, bipagem_itens, bipagem_agente |
 | `migracao_v6.sql` | **índices de desempenho** + função opcional `limpar_historico_antigo()` |
+| `migracao_v8.sql` | Vales: `comprovante_id` (código da transação lido do comprovante, evita lançar o mesmo duas vezes) |
 | `migracao_v7.sql` | **SMS** (sms_gateways, sms_campanhas, sms_destinos, sms_envios, sms_descadastros), `campanhas.agendada_para` (agendar e-mail), `cliques_chamados` ("já chamado"), `mensagens_rota` (mensagens prontas do WhatsApp das rotas) |
 
 Tabelas que já existiam antes das migrações (criadas na primeira versão): `usuarios`, `coletas`, `vales_coleta`,
@@ -432,6 +434,13 @@ enxerga problemas de aparência; teste visualmente no navegador e no celular ap�
     com um `User-Agent` próprio (`SistemaColetas/1.0`) e, quando a resposta não é JSON, o erro mostra o início do texto recebido (ex.: "error code: 1010").
     Se ainda der 403, esse texto diz se é firewall ou permissão da conta.
     **Confirmado em 29/10/2026: o SMS de teste chegou** depois do `User-Agent` próprio — a causa era mesmo o firewall barrando o `Python-urllib`.
+23. **Vales com leitura de comprovante por IA (30/10/2026):** em *Vales*, ao anexar a foto aparece **🤖 Ler comprovante com IA** (Gemini, a mesma
+    `GEMINI_API_KEY` dos modelos de e-mail). A IA sugere **valor, data, nome de quem recebeu** (casado com os coletores/apelidos por `rotas.nomes.casar`)
+    e o **código da transação**; o formulário já vem preenchido e **o administrador confere e lança** (a IA nunca grava sozinha). Comprovante já lançado
+    (mesmo código) é bloqueado, a menos que marque "Lançar mesmo assim". Data no futuro nunca é sugerida; valor/data ilegíveis viram aviso. A foto sai do
+    sistema e vai ao Google para leitura (aviso na tela). Código em `core/leitor_comprovante.py` (conferência, sem rede) e `disparador/ia.py:ler_comprovante`.
+    Coluna nova `vales_coleta.comprovante_id` (`migracao_v8.sql`, **já aplicada no Supabase em 30/10/2026**); sem a coluna o vale ainda é lançado, só sem a checagem de repetição.
+    15 testes novos (290 no total). **Pendente:** testar com comprovantes reais (Pix de bancos diferentes) e ajustar o texto pedido à IA se algum banco falhar.
 
 ---
 
