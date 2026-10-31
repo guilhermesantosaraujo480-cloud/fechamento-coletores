@@ -506,6 +506,16 @@ WhatsApp, "já chamado", mensagens prontas, Toolbox e correção da tela de nova
   descadastros e variações de texto); (b) API de SMS paga (remetente registrado, melhor entrega); (c) sem automação: link `sms:` na lista
   de quem clicou/não respondeu, um toque por cliente. Recomendado começar por teste pequeno. Nada implementado.
 
+- **Ideia (31/10/2026) — caixa de entrada única de WhatsApp (nova aba "💬 WhatsApp"), ~6 números, sem pagar API de terceiros.** Estudo feito, nada
+  construído ainda. **Caminho A (oficial, recomendado):** WhatsApp Business Platform (Cloud API) direto da Meta — sem mensalidade de plataforma (só paga
+  por mensagem); mensagem que o cliente manda é grátis e cada número tem 1.000 mensagens de serviço grátis/mês (regras mudam: conferir em
+  developers.facebook.com/documentation/business-messaging/whatsapp/pricing); mensagens que NÓS iniciamos com modelo são pagas. Encaixa no fluxo
+  atual (cliente clica no botão do e-mail/SMS e escreve primeiro). Técnica: webhook da Meta → Edge Function do Supabase → tabelas de conversas/mensagens
+  → aba que lista e responde pela API. Exige conta Meta Business e número registrado na API (ou *coexistência* com o app Business; disponibilidade no
+  Brasil a confirmar). **Caminho B (não oficial, grátis, arriscado):** Evolution API/Baileys em servidor ligado 24 h; viola os termos do WhatsApp e pode
+  banir o número. Plano em fases: (1) piloto com 1 número, só receber; (2) responder; (3) os outros números; (4) ligar ao protocolo/lista de cliques.
+  Insumos pedidos ao dono: tipo de WhatsApp dos 6 números, conta Meta Business, volume diário, quem escreve primeiro, número para o piloto.
+
 **Avaliação de plataforma (resposta dada em 26/10/2026):** manter **Python/Streamlit**. Ele não está no limite para uso interno de
 um administrador; os limites reais são o plano gratuito (o app dorme, ~1 GB de memória) e o celular dos coletores. Reescrever em
 JavaScript/Java/PHP custaria meses sem ganho funcional, porque a lógica (`core`, `disparador`, `rotas`, `bipagem`) é Python testado.
