@@ -18,7 +18,7 @@ def _abas_excel(resumo, coletas, vales, premios):
     aprov["data"] = aprov["data"].map(data_br)
     v = vales[["data", "coletor", "valor_vale", "descricao"]].copy()
     v["data"] = v["data"].map(data_br)
-    p = premios[["data", "coletor", "valor_premiacao", "descricao"]].copy()
+    p = premios[["data", "coletor", "categoria", "valor_premiacao", "descricao"]].copy()
     p["data"] = p["data"].map(data_br)
     return {
         "Resumo por Coletor": fin.adicionar_total(resumo, coletas),
@@ -26,7 +26,7 @@ def _abas_excel(resumo, coletas, vales, premios):
                                                    "valor_total": "Valor (R$)", "pago": "Pago",
                                                    "dividida_com": "Dividida com"}),
         "Vales": v.rename(columns={"data": "Data", "coletor": "Coletor", "valor_vale": "Valor (R$)", "descricao": "Motivo"}),
-        "Premiações": p.rename(columns={"data": "Data", "coletor": "Coletor", "valor_premiacao": "Valor (R$)",
+        "Serviços e Premiações": p.rename(columns={"data": "Data", "coletor": "Coletor", "categoria": "Categoria", "valor_premiacao": "Valor (R$)",
                                         "descricao": "Motivo"}),
     }
 
@@ -66,10 +66,14 @@ def render(sb, filtro):
     anterior = (sum(saldos.values()) if filtro.coletor == "Todos" else saldos.get(filtro.coletor, 0))
     a_pagar = f.liquido + anterior
     metricas([("📱 Aparelhos", f"{f.aparelhos}"), ("💰 Bruto", brl(f.reais("bruto"))),
-              ("🏅 Premiações (+)", brl(f.reais("premios"))), ("📉 Vales (−)", brl(f.reais("vales"))),
+              ("🏅 Serviços/Premiações (+)", brl(f.reais("premios"))), ("📉 Vales (−)", brl(f.reais("vales"))),
               ("🧮 Líquido do período", brl(f.reais("liquido"))),
               ("↩️ Saldo anterior", brl(anterior / 100), "Vales que passaram da produção nas quinzenas anteriores"),
               ("💵 A pagar", brl(a_pagar / 100), "Líquido do período + saldo anterior")])
+    if filtro.coletor != "Todos":
+        servicos = fin.servicos_por_categoria(fin.filtrar_coletor(premios, filtro.coletor))
+        if servicos:
+            st.caption("Serviços e premiações de " + filtro.coletor + ": " + " · ".join(f"{k} {brl(v / 100)}" for k, v in servicos.items()))
     if anterior:
         st.info("↩️ O saldo anterior é calculado automaticamente: vale que passou da produção de uma quinzena "
                 "é descontado na seguinte. Não precisa lançar o vale de novo.")
@@ -87,7 +91,7 @@ def render(sb, filtro):
     with esquerda:
         with cartao():
             st.markdown("**Resumo por coletor**")
-            tabela = fin.formatar_moeda(fin.adicionar_total(resumo, coletas), ["Bruto", "Premiações", "Vales", "Líquido", "Saldo anterior", "A pagar", "Não pago"])
+            tabela = fin.formatar_moeda(fin.adicionar_total(resumo, coletas), ["Bruto", "Serviços/Premiações", "Vales", "Líquido", "Saldo anterior", "A pagar", "Não pago"])
             st.dataframe(tabela, hide_index=True, use_container_width=True)
             baixar_excel("📊 Baixar relatório em Excel (.xlsx)",
                          gerar_excel(_abas_excel(resumo, coletas, vales, premios)),
@@ -98,6 +102,7 @@ def render(sb, filtro):
             if filtro.coletor == "Todos":
                 st.caption("Escolha um coletor nos filtros da barra lateral para gerar o recibo dele.")
             else:
-                recibo = fin.texto_recibo(filtro.coletor, filtro.ini, filtro.fim, f, agora_br(), saldos.get(filtro.coletor, 0))
+                recibo = fin.texto_recibo(filtro.coletor, filtro.ini, filtro.fim, f, agora_br(), saldos.get(filtro.coletor, 0),
+                                         fin.servicos_por_categoria(fin.filtrar_coletor(premios, filtro.coletor)))
                 st.code(recibo, language="text")
                 _botao_whatsapp(sb, filtro.coletor, recibo)

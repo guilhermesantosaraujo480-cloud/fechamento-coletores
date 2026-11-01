@@ -36,12 +36,12 @@
   "sha256": "aa3bf6ddb35940a6f7abe4791d2321de0efd53708aabb3e2cc6744fe1de5e0d2"
  },
  "README.md": {
-  "bytes": 51140,
-  "sha256": "12bc471ab4d1679a062b59b7628ac8dee4155bc039cc669a2360e7e17cd1d3a7"
+  "bytes": 51972,
+  "sha256": "32f4bb0535c97c02bf5a1a59145e4d6d6ed41838ee1b634d85c11e5eacb41c17"
  },
  "app.py": {
-  "bytes": 4495,
-  "sha256": "24a3749d45eb7c6cabe8b6ca083814dcc3e580a510d69da2ef64bc40a16ac67f"
+  "bytes": 4507,
+  "sha256": "0ddc4ad1a5be657e4a8ade9f5f2c83436b9e4223b978dee849b80787957742f2"
  },
  "bipagem/__init__.py": {
   "bytes": 342,
@@ -100,8 +100,8 @@
   "sha256": "4ca250c064957c9f2e098c7f17187b5a3b27ce891b92e7789c0ea19accefb6bd"
  },
  "core/dados.py": {
-  "bytes": 5566,
-  "sha256": "5ec2b3b5d20b1f28ac5fbfcc36814f7d1d03b5e8a1d356a696423b66ed181107"
+  "bytes": 6254,
+  "sha256": "c04c8b02d2b0f423c43aae9b0b6acb10e20862346c89cfac05a9901d03b4fac9"
  },
  "core/db.py": {
   "bytes": 781,
@@ -116,8 +116,8 @@
   "sha256": "1efcb1612babf0c2adf10d830515d5793d088d0a23855fb1cbd7f2f78e481ec7"
  },
  "core/financeiro.py": {
-  "bytes": 12056,
-  "sha256": "ca2644684069156035a58baed6df994a6b0ca772b7af2d3398493b3f2f50153b"
+  "bytes": 13428,
+  "sha256": "a527d8dcf9d3aa3a66720880128ddc7d1cc8dd6e4300617030d252040d261c1e"
  },
  "core/leitor_comprovante.py": {
   "bytes": 4097,
@@ -226,6 +226,10 @@
  "migracao.sql": {
   "bytes": 3412,
   "sha256": "d1dce515fbd502b060b95aa2605d99f48b6d9364976ef98912ed538425af6a43"
+ },
+ "migracao_v10.sql": {
+  "bytes": 536,
+  "sha256": "ea3bc706c552c650da9ffcb0d6e27089a1546c2c0571a5f13f439c719459050d"
  },
  "migracao_v2.sql": {
   "bytes": 1441,
@@ -360,8 +364,8 @@
   "sha256": "fbd40036c9fb73507c82ed40df75ea038bb2da0ce9335c75c7fe88c8f5e5e7a9"
  },
  "tests/test_divisao.py": {
-  "bytes": 3794,
-  "sha256": "788c860051ee05bf36f42189ee71a41b8a0d31bec512450301ab9baa5e1af053"
+  "bytes": 6176,
+  "sha256": "6358c6324909bd52ce1b4f88766ff4f2f2f5d26fab8a1a6156aaa809c1f2ed25"
  },
  "tests/test_fila.py": {
   "bytes": 10856,
@@ -389,7 +393,7 @@
  },
  "tests/test_ui_smoke.py": {
   "bytes": 26200,
-  "sha256": "36c13f5ea899042b204bfaadf11a40dc2734804002117939d8a213a9c1db3139"
+  "sha256": "f9e0e4a7ce273528252e1cd831467a08f789065b75c8e648f124865e69fcedaf"
  },
  "tests/test_variacoes.py": {
   "bytes": 20738,
@@ -420,16 +424,16 @@
   "sha256": "a736e31eef67d4d6654f523e3d7217db41853897d11f4a26930cfd01f83a19ef"
  },
  "ui/adm/fechamento.py": {
-  "bytes": 5691,
-  "sha256": "fc808a18dbd3e3248efd6f5cc71b8349fe5a07847c3c767ea172acad45ec3e59"
+  "bytes": 6169,
+  "sha256": "b73d72cbdfa3807fea8d80e670d41da0d2df37fa43685706bb12270143363977"
  },
  "ui/adm/filtros.py": {
   "bytes": 1481,
   "sha256": "458b4bb94b018a07424d3194031c6f9313c92f9ad65144cc7780db0a74998ae2"
  },
  "ui/adm/premiacoes.py": {
-  "bytes": 3804,
-  "sha256": "fefda16ff04e4513d96d1ea2cea27847d85b65d335ed485ee2b59679254f7ac7"
+  "bytes": 5116,
+  "sha256": "5f30551deb9bfdd21885f465fdbe75c3b8014d579258c3dccb26de046898f1b7"
  },
  "ui/adm/rotas.py": {
   "bytes": 41521,
@@ -444,8 +448,8 @@
   "sha256": "e4d39f6a6ab6814b6a03b35aebe28966a1b9d36260ce766bb0a6f67424caca94"
  },
  "ui/adm/visao_geral.py": {
-  "bytes": 4682,
-  "sha256": "f8fe241bf76952885091f729714a68b9413a2396327bac83a2e8159cb971d062"
+  "bytes": 4702,
+  "sha256": "c29fe04fabb2f5b56f99732829b59aef884717aaa0af57cc980230b08f1791ad"
  },
  "ui/coletor/__init__.py": {
   "bytes": 53,
@@ -468,8 +472,8 @@
   "sha256": "3fc44720392de984ee1a397bf761b4216df3ce0471d4046de2800014c57adac3"
  },
  "ui/coletor/extrato.py": {
-  "bytes": 5534,
-  "sha256": "68e770d081a6d6603f2ada92c8c1f8227ebcef1d7e2a601bcb2c5d6740d1e67e"
+  "bytes": 5794,
+  "sha256": "6c9b186a91bd4dbefdf2e83be85cf0b941016c9eacc50301c0cec7717af6ac3d"
  },
  "ui/componentes.py": {
   "bytes": 4113,

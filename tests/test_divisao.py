@@ -86,3 +86,42 @@ class TestDivisao(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestServicos(unittest.TestCase):
+    def premios(self):
+        from core import financeiro as fin
+        return fin.df_premios([
+            {"id": 1, "data": "2026-10-03", "coletor": "Ana", "valor_premiacao": 500, "categoria": "Agendamentos Reintegra"},
+            {"id": 2, "data": "2026-10-04", "coletor": "Ana", "valor_premiacao": 300, "categoria": "Chips"},
+            {"id": 3, "data": "2026-10-05", "coletor": "Ana", "valor_premiacao": 200, "categoria": None},  # antigo
+            {"id": 4, "data": "2026-10-05", "coletor": "Bia", "valor_premiacao": 50, "categoria": "Chips"},
+        ])
+
+    def test_soma_por_categoria_e_antigos_viram_premiacao(self):
+        from core import financeiro as fin
+        s = fin.servicos_por_categoria(fin.filtrar_coletor(self.premios(), "Ana"))
+        self.assertEqual(s, {"Agendamentos Reintegra": 50000, "Chips": 30000, "Premiação": 20000})
+
+    def test_recibo_sem_emojis_e_com_abertura(self):
+        import re
+        from datetime import datetime, date
+        from core import financeiro as fin
+        c = fin.df_coletas([{"id": 1, "data": "2026-10-02", "coletor": "Ana", "quantidade": 10, "status": "Aprovado", "valor_total": 1000}])
+        p = fin.filtrar_coletor(self.premios(), "Ana")
+        f = fin.calcular_fechamento(c, fin.df_vales([]), p)
+        txt = fin.texto_recibo("Ana", date(2026, 10, 1), date(2026, 10, 15), f, datetime(2026, 10, 16, 9, 0), 0, fin.servicos_por_categoria(p))
+        self.assertIn("Coleta de Aparelhos:* R$ 1.000,00", txt)
+        self.assertIn("Agendamentos Reintegra:* R$ 500,00", txt)
+        self.assertIn("Total Bruto (aparelhos + serviços):* R$ 2.000,00", txt)
+        self.assertIn("Valor Líquido:* R$ 2.000,00", txt)
+        self.assertFalse(re.search(r"[\U0001F000-\U0001FFFF←-⯿️]", txt), txt)
+
+    def test_recibo_normal_sem_servicos(self):
+        from datetime import datetime, date
+        from core import financeiro as fin
+        c = fin.df_coletas([{"id": 1, "data": "2026-10-02", "coletor": "Ana", "quantidade": 10, "status": "Aprovado", "valor_total": 1000}])
+        f = fin.calcular_fechamento(c, fin.df_vales([]), fin.df_premios([]))
+        txt = fin.texto_recibo("Ana", date(2026, 10, 1), date(2026, 10, 15), f, datetime(2026, 10, 16, 9, 0), 0, {})
+        self.assertIn("Total Bruto:* R$ 1.000,00", txt)
+        self.assertNotIn("Serviços", txt)

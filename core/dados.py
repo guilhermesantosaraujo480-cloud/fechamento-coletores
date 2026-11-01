@@ -79,6 +79,22 @@ def listar_usuarios(_sb):
         return [{**u, "ativo": True} for u in (linhas or [])], False
 
 
+CATEGORIAS_PADRAO = ("Premiação", "Lojas Vivo", "Agendamentos Reintegra", "Coletas em loja", "Chips")
+
+
+def categorias_servico(_sb):
+    """Nomes das categorias ativas (tabela categorias_servico). Sem a tabela (migracao_v10 não rodada), usa a lista padrão."""
+    try:
+        linhas = _sb.table("categorias_servico").select("nome,ativo").execute().data or []
+    except Exception:  # noqa: BLE001
+        return list(CATEGORIAS_PADRAO)
+    nomes = sorted(l["nome"] for l in linhas if l.get("ativo") is not False and l.get("nome"))
+    if "Premiação" in nomes:
+        nomes.remove("Premiação")
+        nomes.insert(0, "Premiação")
+    return nomes or list(CATEGORIAS_PADRAO)
+
+
 def nomes_coletores(_sb, somente_ativos=True):
     usuarios, _ = listar_usuarios(_sb)
     return [u["nome_completo"] for u in usuarios

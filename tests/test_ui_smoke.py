@@ -107,7 +107,7 @@ class TestPaginasAdm(Base):
     def test_lancar_premiacao_e_usuario_invalido(self):
         from ui.adm import premiacoes, usuarios
         db = banco()
-        ST.respostas["Lançar premiação"] = True
+        ST.respostas["Lançar"] = True
         ST.respostas["Valor (R$)"] = 12.0
         with self.assertRaises(fakes.Reiniciar):
             premiacoes.render(db, self.filtro())
@@ -128,7 +128,7 @@ class TestColetorELogin(Base):
         from ui import conta
         from ui.coletor import comprovantes, enviar, extrato
         for cheio in (True, False):
-            for secao in ("📱 Envios", "📉 Vales", "🏅 Premiações"):
+            for secao in ("📱 Envios", "📉 Vales", "🏅 Serviços e Premiações"):
                 ST.respostas["nav_extrato"] = secao
                 extrato.render(banco(cheio))
             enviar.render(banco(cheio))

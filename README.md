@@ -448,6 +448,11 @@ enxerga problemas de aparência; teste visualmente no navegador e no celular ap�
     parceiro) e `coletas.dividida_com` (`migracao_v9.sql`, **já aplicada no Supabase em 31/10/2026**). Totais gerais usam `fin.sem_duplicadas` (aparelho conta
     uma vez); fechamento/extrato de cada coletor mostram o total de aparelhos e a sua parte. Coleta dividida não pode ser editada nem ter o status mudado
     (desfaça antes); paga não divide nem desfaz. Sempre 2 pessoas, 50/50. 6 testes novos (296 no total).
+25. **Serviços e premiações por categoria (01/11/2026):** a aba virou **Serviços e Premiações**. Cada lançamento tem **categoria** (padrão: Premiação, Lojas Vivo,
+    Agendamentos Reintegra, Coletas em loja, Chips; botão **➕ Nova categoria** cria outras). Lançamento antigo sem categoria conta como *Premiação*.
+    No **recibo** do coletor, se ele tem serviços, o valor vem aberto: *Coleta de Aparelhos* + uma linha por categoria + *Total Bruto*; sem serviços o recibo
+    fica como antes. **Recibo sem emojis** (padrão corporativo). No resumo geral (Fechamento/Visão geral) continua **uma só coluna: Serviços/Premiações**.
+    Extrato do coletor e Excel mostram a categoria. Tabelas: `premiacoes.categoria` e `categorias_servico` (`migracao_v10.sql`, **já aplicada em 01/11/2026**). 3 testes novos (299).
 
 ---
 

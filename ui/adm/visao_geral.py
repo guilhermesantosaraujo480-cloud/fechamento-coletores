@@ -47,9 +47,9 @@ def render(sb, filtro):
     metricas([
         ("📱 Aparelhos", f"{f.aparelhos}", "Somente coletas aprovadas"),
         ("💰 Bruto", brl(f.reais("bruto"))),
-        ("🏅 Premiações (+)", brl(f.reais("premios"))),
+        ("🏅 Serviços/Premiações (+)", brl(f.reais("premios"))),
         ("📉 Vales (−)", brl(f.reais("vales"))),
-        ("🧮 Líquido", brl(f.reais("liquido")), "Bruto + premiações − vales"),
+        ("🧮 Líquido", brl(f.reais("liquido")), "Bruto + serviços/premiações − vales"),
     ])
     dias = (filtro.fim - filtro.ini).days + 1
     acrescidos = fin.acrescimos(coletas)

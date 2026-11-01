@@ -28,7 +28,7 @@ PAGINAS_ADM = {
     "📋 Coletas": ("ui.adm.coletas", True),
     "💵 Fechamento": ("ui.adm.fechamento", True),
     "📉 Vales": ("ui.adm.vales", True),
-    "🏅 Premiações": ("ui.adm.premiacoes", True),
+    "🏅 Serviços e Premiações": ("ui.adm.premiacoes", True),
     "🚚 Rotas": ("ui.adm.rotas", False),
     "🔖 Bipagem": ("ui.adm.bipagem", False),
     "👥 Usuários": ("ui.adm.usuarios", False),

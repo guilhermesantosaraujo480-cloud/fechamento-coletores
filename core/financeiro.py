@@ -14,7 +14,8 @@ STATUS = ("Pendente", "Aprovado", "Recusado")
 COLS_COLETAS = ["id", "data", "coletor", "quantidade", "foto_url", "status", "valor_total", "pago", "qtd_acrescimo",
                 "divisao_de", "dividida_com"]
 COLS_VALES = ["id", "data", "coletor", "valor_vale", "descricao", "foto_url"]
-COLS_PREMIOS = ["id", "data", "coletor", "valor_premiacao", "descricao"]
+COLS_PREMIOS = ["id", "data", "coletor", "valor_premiacao", "descricao", "categoria"]
+CATEGORIA_PADRAO = "Premiação"  # lançamentos antigos (sem categoria) contam como premiação
 
 
 # ----------------------------------------------------------------- normalização
@@ -45,7 +46,20 @@ def df_vales(linhas):
 
 
 def df_premios(linhas):
-    return _preparar(linhas, COLS_PREMIOS, numericas=["valor_premiacao"], textos=["coletor", "descricao"])
+    df = _preparar(linhas, COLS_PREMIOS, numericas=["valor_premiacao"], textos=["coletor", "descricao", "categoria"])
+    if "categoria" in df.columns:  # lançamento antigo, sem categoria, conta como premiação
+        df["categoria"] = df["categoria"].fillna("").astype(str).str.strip().replace("", CATEGORIA_PADRAO)
+    return df
+
+
+def servicos_por_categoria(premios):
+    """{categoria: centavos} dos serviços/premiações, da maior para a menor categoria. Vazio se não houver."""
+    if premios.empty:
+        return {}
+    cat = premios["categoria"] if "categoria" in premios.columns else pd.Series(CATEGORIA_PADRAO, index=premios.index)
+    cent = _centavos(premios["valor_premiacao"])
+    soma = cent.groupby(cat.replace("", CATEGORIA_PADRAO)).sum()
+    return {k: int(v) for k, v in soma.sort_values(ascending=False).items() if int(v)}
 
 
 def _centavos(serie):
@@ -195,11 +209,11 @@ def resumo_por_coletor(coletas, vales, premios, coletores=(), saldos=None):
                                 filtrar_coletor(premios, nome))
         linhas.append({
             "Coletor": nome, "Aparelhos": f.aparelhos, "Bruto": f.bruto / 100,
-            "Premiações": f.premios / 100, "Vales": f.vales / 100,
+            "Serviços/Premiações": f.premios / 100, "Vales": f.vales / 100,
             "Líquido": f.liquido / 100, "Saldo anterior": saldos.get(nome, 0) / 100,
             "A pagar": (f.liquido + saldos.get(nome, 0)) / 100, "Não pago": f.nao_pago / 100,
         })
-    colunas = ["Coletor", "Aparelhos", "Bruto", "Premiações", "Vales", "Líquido", "Saldo anterior", "A pagar", "Não pago"]
+    colunas = ["Coletor", "Aparelhos", "Bruto", "Serviços/Premiações", "Vales", "Líquido", "Saldo anterior", "A pagar", "Não pago"]
     return pd.DataFrame(linhas, columns=colunas)
 
 
@@ -232,24 +246,33 @@ def serie_diaria(coletas, ini, fim):
     return base.to_frame("Aparelhos")
 
 
-def texto_recibo(coletor, ini, fim, f, gerado_em, saldo_ant=0):
-    saldo_txt = (f"↩️ *Saldo anterior (vales a descontar):* {brl(saldo_ant / 100)}\n"
-                 f"💵 *A pagar:* {brl((f.liquido + saldo_ant) / 100)}\n-----------------------------\n") if saldo_ant else ""
-    return (
-        f"*FECHAMENTO DE COLETAS*\n"
-        f"*Coletor:* {coletor}\n"
-        f"*Período:* {data_br(ini)} até {data_br(fim)}\n"
-        f"-----------------------------\n"
-        f"📱 *Total de Aparelhos:* {f.aparelhos} un\n"
-        f"💰 *Total Bruto:* {brl(f.bruto / 100)}\n"
-        f"🎁 *Premiações/Extras:* {brl(f.premios / 100)}\n"
-        f"📉 *Desconto em Vales:* {brl(f.vales / 100)}\n"
-        f"-----------------------------\n"
-        f"🧮 *Valor Líquido:* {brl(f.liquido / 100)}\n"
-        f"-----------------------------\n"
-        f"{saldo_txt}"
-        f"Gerado em: {gerado_em.strftime('%d/%m/%Y às %H:%M')}"
-    )
+def texto_recibo(coletor, ini, fim, f, gerado_em, saldo_ant=0, servicos=None):
+    """Mensagem de fechamento (sem emojis). `servicos` = servicos_por_categoria(): se houver, o valor é aberto por categoria."""
+    linhas = [
+        "*FECHAMENTO DE COLETAS*",
+        f"*Coletor:* {coletor}",
+        f"*Período:* {data_br(ini)} até {data_br(fim)}",
+        "-----------------------------",
+        f"*Total de Aparelhos:* {f.aparelhos} un",
+    ]
+    if servicos:
+        linhas.append(f"*Coleta de Aparelhos:* {brl(f.bruto / 100)}")
+        linhas += [f"*{nome}:* {brl(valor / 100)}" for nome, valor in servicos.items()]
+        linhas.append(f"*Total Bruto (aparelhos + serviços):* {brl((f.bruto + f.premios) / 100)}")
+    else:
+        linhas.append(f"*Total Bruto:* {brl(f.bruto / 100)}")
+        if f.premios:
+            linhas.append(f"*Serviços/Premiações:* {brl(f.premios / 100)}")
+    linhas += [f"*Desconto em Vales:* {brl(f.vales / 100)}",
+               "-----------------------------",
+               f"*Valor Líquido:* {brl(f.liquido / 100)}",
+               "-----------------------------"]
+    if saldo_ant:
+        linhas += [f"*Saldo anterior (vales a descontar):* {brl(saldo_ant / 100)}",
+                   f"*A pagar:* {brl((f.liquido + saldo_ant) / 100)}",
+                   "-----------------------------"]
+    linhas.append(f"Gerado em: {gerado_em.strftime('%d/%m/%Y às %H:%M')}")
+    return "\n".join(linhas)
 
 
 def formatar_moeda(df, colunas):

@@ -65,12 +65,12 @@ def _vales(sb, vales):
 
 def _premios(premios):
     if premios.empty:
-        vazio("Nenhuma premiação no período.")
+        vazio("Nenhum serviço ou premiação no período.")
         return
-    tabela = premios.sort_values(["data", "id"], ascending=False)[["data", "valor_premiacao", "descricao"]].copy()
+    tabela = premios.sort_values(["data", "id"], ascending=False)[["data", "categoria", "valor_premiacao", "descricao"]].copy()
     tabela["data"] = tabela["data"].map(data_br)
     tabela["valor_premiacao"] = tabela["valor_premiacao"].map(brl)
-    st.dataframe(tabela.rename(columns={"data": "Data", "valor_premiacao": "Valor", "descricao": "Motivo"}),
+    st.dataframe(tabela.rename(columns={"data": "Data", "categoria": "Categoria", "valor_premiacao": "Valor", "descricao": "Descrição"}),
                  hide_index=True, use_container_width=True)
 
 
@@ -85,8 +85,11 @@ def render(sb):
         return
     f = fin.calcular_fechamento(coletas, vales, premios)
     metricas([("📱 Aparelhos aprovados", f"{f.aparelhos}"), ("💰 Bruto", brl(f.reais("bruto"))),
-              ("🏅 Premiações (+)", brl(f.reais("premios"))), ("📉 Vales (−)", brl(f.reais("vales"))),
+              ("🏅 Serviços/Premiações (+)", brl(f.reais("premios"))), ("📉 Vales (−)", brl(f.reais("vales"))),
               ("🧮 Líquido", brl(f.reais("liquido")))])
+    servicos = fin.servicos_por_categoria(premios)
+    if servicos:
+        st.caption("Serviços e premiações: " + " · ".join(f"{k} {brl(v / 100)}" for k, v in servicos.items()))
     try:
         anterior = dados.saldos_anteriores(sb, ini, nome).get(nome, 0)
     except Exception:
@@ -96,7 +99,7 @@ def render(sb):
                    f"Esse valor é descontado automaticamente: a pagar agora = **{brl((f.liquido + anterior) / 100)}**.")
     if n_pendentes:
         st.info(f"🟡 Você tem **{n_pendentes}** envio(s) aguardando aprovação (de qualquer data). Eles ainda não entram nos valores.")
-    secao = navegacao(["📱 Envios", "📉 Vales", "🏅 Premiações"], "nav_extrato")
+    secao = navegacao(["📱 Envios", "📉 Vales", "🏅 Serviços e Premiações"], "nav_extrato")
     if secao == "📱 Envios":
         _envios(sb, coletas)
     elif secao == "📉 Vales":
