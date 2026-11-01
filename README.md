@@ -542,3 +542,20 @@ leve falando direto com o Supabase, e o administrador continua no Streamlit; (3)
 - Fixar a versão do Streamlit no `requirements.txt` (ver tabela de problemas) quando o app estiver estável.
 - Formatos de planilha da plataforma para atribuição em massa (distribuir pelo site e subir nas plataformas).
 - 39 OS TIM com data de cancelamento ainda "Atribuído" para tratar.
+
+### Estudo: design moderno e fluidez no Streamlit (01/11/2026, só estudo — nada implementado ainda)
+Fonte: notas de versão oficiais do Streamlit 2025 e 2026 (docs.streamlit.io/develop/quick-reference/release-notes). Hoje o `requirements.txt` só pede
+`streamlit>=1.35`; para usar o que segue, **fixar uma versão recente (>=1.52) e testar antes**. Já usamos: `st.segmented_control`, `st.toast`, `st.form`, `st.spinner`, cache, CSS leve (`ui/estilos.py`).
+1. **"Trava sutil" no clique (a ideia do dono):** (a) CSS que desliga cliques enquanto o app está recalculando (elementos "stale" ficam com `pointer-events:none`
+   e levemente esmaecidos) — evita duplo clique sem travar a tela; validar o seletor na versão fixada; (b) botões que gravam dinheiro (aprovar, pagar, dividir, lançar vale)
+   com `on_click` + `disabled` enquanto a ação roda; (c) o banco já protege (`eq("status","Pendente")`, `eq("pago",False)`), então duplo clique não duplica.
+2. **Fluidez:** `@st.fragment` (só a parte clicada recalcula, sem piscar a página; 1.63 tem fragmentos nomeados, 1.58 `parallel=True`); `st.dialog` para confirmações
+   no lugar da caixa "Confirmo..." (1.65 abre como gaveta lateral); `st.skeleton` (1.59) enquanto carrega; `st.pagination` (1.58) em listas grandes; `on_change="ignore"` nos
+   filtros que não precisam recalcular; `st.dataframe` com carregamento preguiçoso (1.61).
+3. **Visual sem CSS pesado:** tema nativo em `.streamlit/config.toml` (1.44+): fonte, cantos (`buttonRadius`), cores de gráfico claro/escuro (1.51/1.62), tema separado da barra lateral,
+   `paddingTop/Bottom` (1.66). Modo escuro. Menu no topo com `st.navigation(position="top")` (1.46). `st.metric` com ícone (1.61); `st.status type="step"` (linha do tempo) para processos como envio em massa.
+4. **Acessibilidade:** 1.65/1.66 trouxeram `alt` em imagens/gráficos, link "pular para o conteúdo" e marcação `<main>/<nav>`; `st.date_input` redesenhado (1.62); atalhos de teclado em botões (1.52);
+   contraste do roxo `#660099` conferido; alvos de toque grandes no celular (já feito).
+5. **Tabelas:** `ButtonColumn` e estatísticas de coluna (1.59) para ações dentro da tabela; gráficos `st.echarts_chart` (1.64) se quisermos painéis mais bonitos.
+**Ordem sugerida:** 1) fixar versão + tema nativo; 2) trava sutil + `disabled`; 3) fragmentos nas telas pesadas (Coletas, Fechamento); 4) diálogos de confirmação; 5) acessibilidade e modo escuro.
+**Cuidado:** cada atualização de versão pode mudar visual/seletores; subir a versão primeiro numa cópia e conferir as telas antes de ir para produção.
