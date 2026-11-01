@@ -453,6 +453,16 @@ enxerga problemas de aparência; teste visualmente no navegador e no celular ap�
     No **recibo** do coletor, se ele tem serviços, o valor vem aberto: *Coleta de Aparelhos* + uma linha por categoria + *Total Bruto*; sem serviços o recibo
     fica como antes. **Recibo sem emojis** (padrão corporativo). No resumo geral (Fechamento/Visão geral) continua **uma só coluna: Serviços/Premiações**.
     Extrato do coletor e Excel mostram a categoria. Tabelas: `premiacoes.categoria` e `categorias_servico` (`migracao_v10.sql`, **já aplicada em 01/11/2026**). 3 testes novos (299).
+26. **Revisão de segurança, acessibilidade e textos (01/11/2026):**
+    - **Segurança do banco (corrigido, `migracao_v11.sql`, já aplicada):** havia políticas RLS públicas que deixavam a chave pública (anon) ler `usuarios`, `vales_coleta`, `premiacoes`,
+      `contas_email`, `cliques_email`, `logs_comprovantes` e gravar em várias. Removidas; o sistema, a Edge Function e os workers usam a service_role e não dependem delas. Conferido: com o papel anon, 0 linhas.
+      Também: `rls_auto_enable()` sem execução pública e `search_path` fixo em `limpar_historico_antigo`.
+    - **Recomendado ao dono:** (a) trocar as credenciais do SMSGate e das contas de e-mail que já apareceram em prints ou no histórico do GitHub (o repositório é público e o histórico antigo ainda contém credenciais de teste do SMS);
+      (b) manter o repositório privado se possível; (c) a chave service_role nunca pode ir para o GitHub.
+    - **Cálculos:** dinheiro em centavos inteiros, divisão 50/50 sem perder centavo, bloqueios de pago: sem falhas encontradas.
+    - **Acessibilidade:** contraste do roxo `#660099` no claro é 10,4:1 (ótimo); foco por teclado agora `#a64fd6` (4,2:1 no escuro, 4,5:1 no claro); fotos com texto alternativo (versões novas do Streamlit).
+      Menu com emojis lidos por leitor de tela: aceitável, melhoria futura.
+    - **Textos:** coletor e login não veem mais erro técnico de banco (só o administrador vê o detalhe). SMS/e-mail revisados: tom adequado; atenção ao modelo SMS "Pendência" (pode soar como cobrança).
 
 ---
 
