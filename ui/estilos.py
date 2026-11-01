@@ -17,6 +17,17 @@ div.stButton > button, div.stDownloadButton > button, a[data-testid="stBaseLinkB
     border-radius: 10px;
 }
 img { max-width: 100%; height: auto; }
+/* trava sutil: enquanto o app recalcula depois de um clique, o que está atualizando não aceita novo clique (evita duplo clique) */
+[data-stale="true"] button, [data-stale="true"] a, [data-stale="true"] input, [data-stale="true"] [role="button"] {
+    pointer-events: none !important;
+}
+/* resposta tátil no clique, sem animação pesada */
+div.stButton > button, div.stDownloadButton > button { transition: transform .08s ease, box-shadow .15s ease, background-color .15s ease; }
+div.stButton > button:active, div.stDownloadButton > button:active { transform: scale(.98); }
+/* acessibilidade: foco visível para quem navega pelo teclado */
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, [role="tab"]:focus-visible,
+[data-baseweb="select"]:focus-within { outline: 2px solid #660099 !important; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 @media (max-width: 640px) {
     .block-container { padding-left: 0.8rem; padding-right: 0.8rem; }
     [data-testid="stMetricValue"] { font-size: 1.25rem; }

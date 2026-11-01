@@ -28,16 +28,16 @@
   "sha256": "188bb2fd75f39c5b85983d7cf75491cd3d5d7da7f6de99799ebf8a9c71c2b2d5"
  },
  ".streamlit/config.toml": {
-  "bytes": 98,
-  "sha256": "45d9b2193176b5a89c05534f669da8c90776e95d98a7f26949cc608c57f997c4"
+  "bytes": 119,
+  "sha256": "b7490d30762731a16c81018023f29254dca638d88e15ecf09988834b51f8b827"
  },
  "MELHORIAS.md": {
   "bytes": 2722,
   "sha256": "aa3bf6ddb35940a6f7abe4791d2321de0efd53708aabb3e2cc6744fe1de5e0d2"
  },
  "README.md": {
-  "bytes": 54587,
-  "sha256": "2ec63cea16aabc334df4b114e85b20ed49597fac7b8ebae380eb1905a75436ae"
+  "bytes": 55187,
+  "sha256": "c1fc56bd9721380c15e29f628a1f386b1eb06237763b62f6c51ba3a5d57ce47d"
  },
  "app.py": {
   "bytes": 4507,
@@ -273,7 +273,7 @@
  },
  "requirements.txt": {
   "bytes": 127,
-  "sha256": "fe705530345a3d4a79038b897ebc7d80450575ed78b93a9a91c51d296b4e27eb"
+  "sha256": "7f867317eeb7288fb1a769e9c2d9d5118a51bf25f8878e5b7685e215fd531ffe"
  },
  "rotas/__init__.py": {
   "bytes": 266,
@@ -484,8 +484,8 @@
   "sha256": "538d798cd8edff1292c18804210631dcefa0b339be8709b82fb58b5c7bc88b34"
  },
  "ui/estilos.py": {
-  "bytes": 1196,
-  "sha256": "8144a9557f1e38ebabc1b6241cd9eaf0b34d98ac91e3e259daaefbed68078fb0"
+  "bytes": 2160,
+  "sha256": "3d56515172c2b4e07acccccaa92b1afe6d6f3d7905f71750b329e33f7150a01b"
  },
  "ui/login.py": {
   "bytes": 1036,

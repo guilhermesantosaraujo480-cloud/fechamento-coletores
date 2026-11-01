@@ -1,5 +1,6 @@
 [theme]
 primaryColor = "#660099"
+baseRadius = "large"
 
 [server]
 maxUploadSize = 10

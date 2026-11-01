@@ -557,5 +557,8 @@ Fonte: notas de versão oficiais do Streamlit 2025 e 2026 (docs.streamlit.io/dev
 4. **Acessibilidade:** 1.65/1.66 trouxeram `alt` em imagens/gráficos, link "pular para o conteúdo" e marcação `<main>/<nav>`; `st.date_input` redesenhado (1.62); atalhos de teclado em botões (1.52);
    contraste do roxo `#660099` conferido; alvos de toque grandes no celular (já feito).
 5. **Tabelas:** `ButtonColumn` e estatísticas de coluna (1.59) para ações dentro da tabela; gráficos `st.echarts_chart` (1.64) se quisermos painéis mais bonitos.
+**APLICADO em 01/11/2026 (passos 1 e 2, sem poder abrir o app de verdade aqui):** `streamlit>=1.52` no `requirements.txt`; `baseRadius="large"` no tema; em `ui/estilos.py`: trava sutil de duplo
+clique (`[data-stale]` sem clique), efeito ao pressionar o botão, foco visível por teclado e respeito a "reduzir movimento". **Pendente de teste no site real:** conferir se a trava age na versão instalada;
+**fragmentos (`st.fragment`) e janelas de confirmação (`st.dialog`) NÃO aplicados**: exigem trocar os `st.rerun()` por `st.rerun(scope="app")` e testar no navegador; fazer numa rodada própria.
 **Ordem sugerida:** 1) fixar versão + tema nativo; 2) trava sutil + `disabled`; 3) fragmentos nas telas pesadas (Coletas, Fechamento); 4) diálogos de confirmação; 5) acessibilidade e modo escuro.
 **Cuidado:** cada atualização de versão pode mudar visual/seletores; subir a versão primeiro numa cópia e conferir as telas antes de ir para produção.
