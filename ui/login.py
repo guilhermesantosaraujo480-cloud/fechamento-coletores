@@ -19,7 +19,7 @@ def render(sb, cookies):
         try:
             resultado = auth.autenticar(sb, usuario, senha, sessao.limitador())
         except Exception as erro:
-            st.error(f"Erro ao conectar com o banco de dados: {erro}")
+            st.error("Não foi possível entrar agora. Tente novamente em instantes.")
             return
         if not resultado.ok:
             st.error(resultado.mensagem)

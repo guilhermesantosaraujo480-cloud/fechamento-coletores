@@ -91,6 +91,6 @@ def render(sb):
                     st.toast("Envio realizado! Agora é só aguardar a aprovação.", icon="✅")
                     st.rerun()
                 except Exception as erro:
-                    st.error(f"Erro no envio: {erro}")
+                    st.error("Não foi possível enviar agora. Confira sua conexão e tente de novo. Se continuar, avise o administrador.")
     with direita:
         _ultimos(sb, nome)

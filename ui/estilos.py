@@ -26,7 +26,7 @@ div.stButton > button, div.stDownloadButton > button { transition: transform .08
 div.stButton > button:active, div.stDownloadButton > button:active { transform: scale(.98); }
 /* acessibilidade: foco visível para quem navega pelo teclado */
 button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, [role="tab"]:focus-visible,
-[data-baseweb="select"]:focus-within { outline: 2px solid #660099 !important; outline-offset: 2px; }
+[data-baseweb="select"]:focus-within { outline: 2px solid #a64fd6 !important; outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 @media (max-width: 640px) {
     .block-container { padding-left: 0.8rem; padding-right: 0.8rem; }

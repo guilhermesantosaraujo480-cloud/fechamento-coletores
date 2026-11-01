@@ -41,6 +41,18 @@ def metricas(itens):
         coluna.metric(rotulo, valor, help=ajuda)
 
 
+ALT_FOTO = "Foto da coleta enviada pelo coletor"
+
+
+def _imagem(url, largura=None, legenda=None):
+    """st.image com texto alternativo para leitores de tela (parâmetro `alt` só existe nas versões novas do Streamlit)."""
+    argumentos = {"width": largura} if largura else {"use_container_width": True}
+    try:
+        st.image(url, caption=legenda, alt=ALT_FOTO, **argumentos)
+    except TypeError:
+        st.image(url, caption=legenda, **argumentos)
+
+
 def mostrar_foto(sb, valor, largura=None, legenda=None, miniatura=False, chave=None):
     """miniatura=True: mostra a versão pequena (gasta ~10x menos dados) e deixa abrir a inteira sob demanda.
     Fotos antigas (sem miniatura) aparecem inteiras, como sempre. `chave` precisa ser única na página."""
@@ -48,7 +60,7 @@ def mostrar_foto(sb, valor, largura=None, legenda=None, miniatura=False, chave=N
         inteira = bool(st.session_state.get(f"ampliar_{chave}"))
         url = dados.url_foto(sb, valor, miniatura=not inteira)
         if url:
-            st.image(url, width=largura, caption=legenda) if largura else st.image(url, use_container_width=True, caption=legenda)
+            _imagem(url, largura, legenda)
             st.checkbox("🔍 Ver foto inteira", key=f"ampliar_{chave}")
         else:
             st.caption("📷 Sem foto anexada")
@@ -57,10 +69,7 @@ def mostrar_foto(sb, valor, largura=None, legenda=None, miniatura=False, chave=N
     if not url:
         st.caption("📷 Sem foto anexada")
         return
-    if largura:
-        st.image(url, width=largura, caption=legenda)
-    else:
-        st.image(url, use_container_width=True, caption=legenda)
+    _imagem(url, largura, legenda)
 
 
 def vazio(mensagem):
@@ -68,7 +77,10 @@ def vazio(mensagem):
 
 
 def erro_banco(erro):
-    st.error(f"Não foi possível falar com o banco de dados. Tente novamente em instantes.\n\nDetalhe técnico: {erro}")
+    """Mensagem de falha de banco. O detalhe técnico só aparece para o administrador (o coletor não precisa ver erro de banco)."""
+    from core import sessao  # import local: evita ciclo na carga
+    detalhe = f"\n\nDetalhe técnico: {erro}" if sessao.eh_adm() else ""
+    st.error(f"Não foi possível carregar os dados agora. Tente novamente em instantes. Se continuar, avise o administrador.{detalhe}")
 
 
 def baixar_excel(rotulo, conteudo, nome_arquivo, chave=None):

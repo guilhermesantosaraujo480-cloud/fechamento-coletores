@@ -37,7 +37,7 @@ def render(sb):
                    .or_(f"cliente.ilike.%{termo}%,ordem_servico.ilike.%{termo}%")
                    .order("data_emissao", desc=True).limit(50).execute().data) or []
     except Exception as erro:
-        st.error(f"Erro na base de dados: {erro}")
+        st.error("Não foi possível fazer a busca agora. Tente novamente em instantes.")
         return
     if not dados:
         st.info("ℹ️ Nenhum comprovante encontrado.")

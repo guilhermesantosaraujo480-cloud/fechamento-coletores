@@ -231,6 +231,10 @@
   "bytes": 536,
   "sha256": "ea3bc706c552c650da9ffcb0d6e27089a1546c2c0571a5f13f439c719459050d"
  },
+ "migracao_v11.sql": {
+  "bytes": 1372,
+  "sha256": "867082ce6159e02f193d76a95f8de772cf7b142764c0afa3a3f16f66d5ee6a9c"
+ },
  "migracao_v2.sql": {
   "bytes": 1441,
   "sha256": "b88c6df5ebb38f2aa6d5aad304953f214bd591a9289fa3aecc57e0e55b640ab7"
@@ -464,20 +468,20 @@
   "sha256": "3799002f798a561cfe21e42da23300047abd9ed19d35a24452ed2b2e0291ef2f"
  },
  "ui/coletor/comprovantes.py": {
-  "bytes": 2903,
-  "sha256": "4db9b3f755d15c7faa4f0f39061b6fc95b8ba6604b268234a9b1acda12b37495"
+  "bytes": 2942,
+  "sha256": "520cd7d5ea10a3203a040d76c6ff26b733fc7d57a1b9a32becf546da90e778fb"
  },
  "ui/coletor/enviar.py": {
-  "bytes": 4530,
-  "sha256": "3fc44720392de984ee1a397bf761b4216df3ce0471d4046de2800014c57adac3"
+  "bytes": 4615,
+  "sha256": "4f7d452e81f8f1da899e8c2a74094b20ba49678f8d92625ecbb1b5cdd001772f"
  },
  "ui/coletor/extrato.py": {
   "bytes": 5794,
   "sha256": "6c9b186a91bd4dbefdf2e83be85cf0b941016c9eacc50301c0cec7717af6ac3d"
  },
  "ui/componentes.py": {
-  "bytes": 4113,
-  "sha256": "cc88c990002f29aac501406cb955e9c828e1e75e474fd03f9cf3d26393965ea0"
+  "bytes": 4661,
+  "sha256": "b3e5f189a3990f902c67648bea9b1fe66782eab8e44764b836db2b4d36361a12"
  },
  "ui/conta.py": {
   "bytes": 1007,
@@ -485,11 +489,11 @@
  },
  "ui/estilos.py": {
   "bytes": 2160,
-  "sha256": "3d56515172c2b4e07acccccaa92b1afe6d6f3d7905f71750b329e33f7150a01b"
+  "sha256": "4673751c8363d2d2442b0a8b74a181fbb0c7bb6d57b699edf8a8db4f3e573e66"
  },
  "ui/login.py": {
-  "bytes": 1036,
-  "sha256": "44d4a0bd62ad84fd6de288e121549c408024d5de6e96538446055fc3ccd59b19"
+  "bytes": 1052,
+  "sha256": "3c80b1f3167e64d487a1e4cae180e87bcf90f4d1e3bb827932b2ce9a2c0e90fb"
  },
  "verificar_projeto.py": {
   "bytes": 6893,
