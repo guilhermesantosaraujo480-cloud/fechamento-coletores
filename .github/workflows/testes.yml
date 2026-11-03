@@ -19,6 +19,6 @@ jobs:
         with:
           python-version: "3.12"
       - name: Instalar dependências dos testes
-        run: pip install pandas pillow openpyxl xlrd pypdf bcrypt cryptography requests
+        run: pip install pandas pillow openpyxl xlrd pypdf bcrypt cryptography requests reportlab
       - name: Rodar os testes
         run: python -m unittest discover -s tests -q
