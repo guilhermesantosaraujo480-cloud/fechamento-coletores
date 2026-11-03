@@ -1,9 +1,10 @@
 """Coletor envia a foto do comprovante e a quantidade de aparelhos."""
 import hashlib
+import uuid
 
 import streamlit as st
 
-from core import armazenamento, dados, sessao
+from core import armazenamento, dados, envio, sessao
 from core.config import cfg, valor_por_coleta
 from core.utils import agora_br, brl, data_br
 from ui.componentes import cabecalho, cartao
@@ -76,17 +77,21 @@ def render(sb):
             if st.session_state.get("ultima_foto") == impressao:
                 st.warning("Essa foto já foi enviada. Se for outra coleta, tire uma nova foto.")
             else:
+                # a mesma chave e o mesmo nome de arquivo valem para todas as tentativas desta coleta (queda de internet: repetir é seguro)
+                tentativa = st.session_state.setdefault(f"tentativa_envio_{ctr}", {
+                    "chave": uuid.uuid4().hex, "base": armazenamento.novo_caminho(f"coleta_{u['usuario']}")[:-4]})
                 try:
                     with st.spinner("Enviando..."):
-                        caminho = armazenamento.enviar_foto_pronta(sb, principal, miniatura, f"coleta_{u['usuario']}")
-                        sb.table("coletas").insert({
+                        caminho = armazenamento.enviar_foto_pronta(sb, principal, miniatura, f"coleta_{u['usuario']}", base=tentativa["base"])
+                        envio.registrar_coleta(sb, {
                             "data": agora_br().strftime("%Y-%m-%d"), "coletor": nome, "quantidade": int(quantidade),
                             "foto_url": caminho, "status": "Pendente", "pago": False,
                             "valor_total": round(float(quantidade) * valor_por_coleta(), 2),
-                        }).execute()
+                        }, tentativa["chave"])
                     st.session_state["ultima_foto"] = impressao
                     st.session_state["reset_envio"] = ctr + 1
                     st.session_state.pop("foto_preparada", None)
+                    st.session_state.pop(f"tentativa_envio_{ctr}", None)
                     dados.invalidar()
                     st.toast("Envio realizado! Agora é só aguardar a aprovação.", icon="✅")
                     st.rerun()

@@ -1,4 +1,5 @@
 """Consultas ao Supabase: paginação (limite de 1000 linhas) e filtros no servidor."""
+from .resiliencia import com_tentativas
 from .utils import como_iso, dia_seguinte_iso
 
 
@@ -25,8 +26,8 @@ def buscar_todos(sb, tabela, colunas="*", filtros=None, faixa=None, ordem="id",
     resultado, inicio = [], 0
     while inicio < maximo:
         q = aplicar_filtros(sb.table(tabela).select(colunas), filtros, faixa)
-        dados = (q.order(ordem, desc=decrescente)
-                  .range(inicio, inicio + tamanho - 1).execute().data) or []
+        pagina = q.order(ordem, desc=decrescente).range(inicio, inicio + tamanho - 1)
+        dados = com_tentativas(pagina.execute).data or []
         resultado.extend(dados)
         if len(dados) < tamanho:
             break
@@ -37,6 +38,6 @@ def buscar_todos(sb, tabela, colunas="*", filtros=None, faixa=None, ordem="id",
 def contar(sb, tabela, filtros=None, faixa=None):
     """Conta linhas sem baixar os dados."""
     q = aplicar_filtros(sb.table(tabela).select("id", count="exact"), filtros, faixa)
-    res = q.limit(1).execute()
+    res = com_tentativas(q.limit(1).execute)
     contagem = getattr(res, "count", None)
     return int(contagem) if contagem is not None else len(res.data or [])

@@ -463,6 +463,20 @@ enxerga problemas de aparência; teste visualmente no navegador e no celular ap�
     - **Acessibilidade:** contraste do roxo `#660099` no claro é 10,4:1 (ótimo); foco por teclado agora `#a64fd6` (4,2:1 no escuro, 4,5:1 no claro); fotos com texto alternativo (versões novas do Streamlit).
       Menu com emojis lidos por leitor de tela: aceitável, melhoria futura.
     - **Textos:** coletor e login não veem mais erro técnico de banco (só o administrador vê o detalhe). SMS/e-mail revisados: tom adequado; atenção ao modelo SMS "Pendência" (pode soar como cobrança).
+27. **Esqueci a senha + blindagem contra falhas de rede (03/11/2026):**
+    - **Esqueci a senha (opção administrador):** na tela de login, "Esqueci a senha" pede só o usuário; a resposta é sempre a mesma (não revela se o login existe), 1 pedido aberto por usuário, máximo
+      3 por sessão e 50 pedidos abertos no total. O administrador vê o aviso no painel lateral e na aba **Usuários**, clica em **Gerar senha temporária** (aparece uma vez; texto pronto para copiar) ou **Ignorar**.
+      A temporária derruba as sessões do usuário e **obriga criar a própria senha no primeiro acesso** (`ui/troca_obrigatoria.py`); redefinir senha pelo administrador também exige a troca.
+      **Senha nova: mínimo 8 caracteres** (quem tem senha antiga de 6 continua entrando). Tabelas/colunas: `pedidos_senha`, `usuarios.trocar_senha` (`migracao_v12.sql`, **aplicada em 03/11/2026**).
+      Se o **único** administrador esquecer a senha: gerar o hash com `python -c "from core import auth; print(auth.gerar_hash_senha('NovaSenha123'))"` e gravar em `usuarios.senha` pelo Supabase, com `trocar_senha = true`.
+    - **Rede de segurança geral (`ui/falhas.py`):** qualquer erro inesperado vira aviso calmo com botão **Tentar novamente** e um **código de referência** (gravado na Auditoria como `falha_inesperada` e no log do servidor);
+      o detalhe técnico só aparece para o administrador. Cobre as 24 gravações do lado do administrador que antes mostravam o erro técnico.
+    - **Tentativas automáticas (`core/resiliencia.py`):** leituras (paginação/contagem), login/sessão, envio de foto (com `upsert`, repetir é seguro) e link assinado repetem até 3 vezes em falha de rede. Escritas no banco NÃO são repetidas (poderiam duplicar).
+    - **Envio sem duplicar (`core/envio.py`):** cada tentativa de envio tem uma `chave_envio` (única no banco) e um nome de arquivo fixo; queda depois de gravar não dá erro nem cria 2ª coleta.
+    - **Dividir/desfazer em operação única no banco** (funções `dividir_coleta` e `desfazer_divisao`, tudo ou nada, com trava da linha); o jeito antigo em etapas continua como reserva se a função não existir. Testado no banco com transação desfeita
+      (100,01 → 50,01 / 50,00; desfazer devolve 210,00). `migracao_v13.sql`, **aplicada em 03/11/2026**.
+    - **Estabilidade:** `requirements.txt` com limite de versão maior (evita um redeploy quebrar por biblioteca nova); novo workflow `.github/workflows/testes.yml` roda os testes a cada envio ao GitHub (aba Actions).
+    - 21 testes novos (320 no total). **Pendente:** conferir no site real o fluxo "Esqueci a senha" de ponta a ponta e, na aba Actions, se o workflow *Testes* ficou verde.
 
 ---
 

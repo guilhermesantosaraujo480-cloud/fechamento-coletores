@@ -1,0 +1,24 @@
+# Roda os testes automáticos a cada envio ao GitHub. Se algo quebrar, esta verificação fica VERMELHA na aba Actions e o GitHub avisa por e-mail.
+name: Testes
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instalar dependências dos testes
+        run: pip install pandas pillow openpyxl xlrd pypdf bcrypt cryptography requests
+      - name: Rodar os testes
+        run: python -m unittest discover -s tests -q

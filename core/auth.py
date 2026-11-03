@@ -7,7 +7,9 @@ from dataclasses import dataclass, field
 
 import bcrypt
 
-MIN_SENHA = 6
+from .resiliencia import com_tentativas
+
+MIN_SENHA = 8  # só vale para senhas NOVAS; quem já tem senha de 6 continua entrando e é orientado a trocar
 MAX_BYTES_SENHA = 72  # limite do bcrypt
 
 
@@ -87,7 +89,7 @@ class ResultadoLogin:
 
 
 def dados_publicos(linha):
-    return {k: linha.get(k) for k in ("id", "usuario", "nome_completo", "cargo")}
+    return {k: linha.get(k) for k in ("id", "usuario", "nome_completo", "cargo", "trocar_senha")}
 
 
 def autenticar(sb, usuario, senha, limitador):
@@ -98,7 +100,7 @@ def autenticar(sb, usuario, senha, limitador):
         minutos = max(1, limitador.segundos_restantes(usuario) // 60 + 1)
         return ResultadoLogin(False, mensagem=f"Muitas tentativas incorretas. Aguarde cerca de {minutos} min.")
 
-    res = sb.table("usuarios").select("*").eq("usuario", usuario).limit(1).execute()
+    res = com_tentativas(sb.table("usuarios").select("*").eq("usuario", usuario).limit(1).execute)
     linha = res.data[0] if res.data else None
     ok, migrar = conferir_senha(senha, linha["senha"]) if linha else (False, False)
     if not (linha and ok):
@@ -120,7 +122,7 @@ def usuario_por_token(sb, token):
     """Recupera o usuário a partir do cookie de sessão (None se inválido ou desativado)."""
     if not token:
         return None
-    res = sb.table("usuarios").select("*").eq("session_token", hash_token(token)).limit(1).execute()
+    res = com_tentativas(sb.table("usuarios").select("*").eq("session_token", hash_token(token)).limit(1).execute)
     if not res.data or res.data[0].get("ativo") is False:
         return None
     return dados_publicos(res.data[0])
@@ -130,10 +132,13 @@ def encerrar_sessao(sb, usuario_id):
     sb.table("usuarios").update({"session_token": None}).eq("id", usuario_id).execute()
 
 
-def definir_senha(sb, usuario_id, nova_senha, encerrar_sessoes=True):
+def definir_senha(sb, usuario_id, nova_senha, encerrar_sessoes=True, exigir_troca=False):
+    """Grava a senha (hash). `exigir_troca=True` (senha definida pelo administrador): no próximo acesso o usuário é obrigado a criar a dele."""
     mudancas = {"senha": gerar_hash_senha(nova_senha)}
     if encerrar_sessoes:
         mudancas["session_token"] = None
+    if exigir_troca:
+        mudancas["trocar_senha"] = True
     sb.table("usuarios").update(mudancas).eq("id", usuario_id).execute()
 
 
@@ -150,3 +155,67 @@ def alterar_propria_senha(sb, usuario_id, senha_atual, nova_senha):
         return False, "A senha atual está incorreta."
     definir_senha(sb, usuario_id, nova_senha, encerrar_sessoes=False)
     return True, "Senha alterada."
+
+
+# ------------------------------------------------------------------ esqueci a senha (pedido ao administrador)
+ALFABETO_TEMPORARIA = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"  # sem 0/O, 1/l/I (confundem na leitura)
+MAX_PEDIDOS_ABERTOS = 50  # trava contra enchente de pedidos falsos
+MENSAGEM_PEDIDO = ("Pedido enviado. Se esse usuário existir, o administrador vai gerar uma senha temporária e avisar você. "
+                   "No primeiro acesso, você cria a sua senha.")
+
+
+def gerar_senha_temporaria(tamanho=10):
+    return "".join(secrets.choice(ALFABETO_TEMPORARIA) for _ in range(tamanho))
+
+
+def pedir_redefinicao(sb, usuario):
+    """Registra o pedido de nova senha. A resposta ao usuário é sempre a mesma (não revela se o login existe)."""
+    usuario = (usuario or "").strip().lower()
+    if not usuario or len(usuario) > 60:
+        return
+    linha = sb.table("usuarios").select("id,ativo").eq("usuario", usuario).limit(1).execute().data
+    if not linha or linha[0].get("ativo") is False:
+        return
+    abertos = sb.table("pedidos_senha").select("id,usuario").eq("atendido", False).limit(MAX_PEDIDOS_ABERTOS + 1).execute().data or []
+    if len(abertos) > MAX_PEDIDOS_ABERTOS or any(a["usuario"] == usuario for a in abertos):
+        return
+    sb.table("pedidos_senha").insert({"usuario": usuario, "atendido": False}).execute()
+
+
+def pedidos_abertos(sb):
+    """Pedidos ainda não atendidos, com o nome da pessoa (mais antigos primeiro)."""
+    pedidos = sb.table("pedidos_senha").select("id,usuario,criado_em").eq("atendido", False).order("criado_em").limit(100).execute().data or []
+    if not pedidos:
+        return []
+    nomes = {u["usuario"]: u["nome_completo"] for u in
+             sb.table("usuarios").select("usuario,nome_completo").in_("usuario", [p["usuario"] for p in pedidos]).execute().data or []}
+    return [{**p, "nome_completo": nomes.get(p["usuario"], p["usuario"])} for p in pedidos]
+
+
+def atender_pedido(sb, pedido, quem):
+    """Gera a senha temporária, derruba as sessões do usuário, exige a troca no próximo acesso e fecha o pedido. Devolve a senha."""
+    alvo = sb.table("usuarios").select("id").eq("usuario", pedido["usuario"]).limit(1).execute().data
+    if not alvo:
+        raise ValueError("Usuário não existe mais.")
+    temporaria = gerar_senha_temporaria()
+    definir_senha(sb, alvo[0]["id"], temporaria, encerrar_sessoes=True, exigir_troca=True)
+    sb.table("pedidos_senha").update({"atendido": True, "atendido_por": quem}).eq("usuario", pedido["usuario"]).eq("atendido", False).execute()
+    return temporaria
+
+
+def ignorar_pedido(sb, pedido, quem):
+    sb.table("pedidos_senha").update({"atendido": True, "atendido_por": f"{quem} (ignorado)"}).eq("usuario", pedido["usuario"]).eq("atendido", False).execute()
+
+
+def concluir_troca_obrigatoria(sb, usuario_id, nova_senha):
+    """Primeiro acesso com senha temporária/definida pelo administrador. Devolve (ok, mensagem)."""
+    problema = validar_senha_nova(nova_senha)
+    if problema:
+        return False, problema
+    atual = sb.table("usuarios").select("senha").eq("id", usuario_id).limit(1).execute().data
+    if not atual:
+        return False, "Usuário não encontrado."
+    if conferir_senha(nova_senha, atual[0]["senha"])[0]:
+        return False, "Escolha uma senha diferente da temporária."
+    sb.table("usuarios").update({"senha": gerar_hash_senha(nova_senha), "trocar_senha": False}).eq("id", usuario_id).execute()
+    return True, "Senha criada."

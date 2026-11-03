@@ -71,5 +71,5 @@ def revalidar(sb, cookies, intervalo_seg=300):
         return  # falha de rede não derruba ninguém
     if not linhas or linhas[0].get("ativo") is False:
         sair(sb, cookies)
-    elif linhas[0].get("cargo") != u["cargo"]:
+    elif linhas[0].get("cargo") != u["cargo"] or bool(linhas[0].get("trocar_senha")) != bool(u.get("trocar_senha")):
         st.session_state["usuario"] = auth.dados_publicos(linhas[0])

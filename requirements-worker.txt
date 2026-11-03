@@ -1,4 +1,4 @@
-supabase>=2.0
-pandas>=2.0
-cryptography
-requests
+supabase>=2.0,<3
+pandas>=2.0,<4
+cryptography>=41,<51
+requests>=2.31,<3

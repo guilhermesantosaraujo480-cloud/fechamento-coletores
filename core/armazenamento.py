@@ -4,6 +4,7 @@ import urllib.parse
 import uuid
 from io import BytesIO
 
+from .resiliencia import com_tentativas
 from .utils import agora_br
 
 BUCKET = "comprovantes"
@@ -75,18 +76,18 @@ def ler_bytes(arquivo):
     return arquivo.getvalue() if hasattr(arquivo, "getvalue") else arquivo.read()
 
 
-def enviar_foto_pronta(sb, principal, miniatura, prefixo):
+def enviar_foto_pronta(sb, principal, miniatura, prefixo, base=None):
     """Envia a foto já compactada (e a miniatura) e devolve só o CAMINHO. Se a miniatura falhar, a foto segue sem ela."""
-    base = novo_caminho(prefixo)[:-4]
-    opcoes = {"content-type": "image/jpeg"}
+    base = base or novo_caminho(prefixo)[:-4]  # `base` fixa: repetir o envio reaproveita o mesmo arquivo em vez de deixar sobras
+    opcoes = {"content-type": "image/jpeg", "upsert": "true"}  # mesmo nome + upsert: repetir depois de uma queda é seguro
     caminho = base + ".jpg"
     if miniatura:
         try:
-            sb.storage.from_(BUCKET).upload(path=base + SUFIXO_MINIATURA, file=miniatura, file_options=opcoes)
+            com_tentativas(lambda: sb.storage.from_(BUCKET).upload(path=base + SUFIXO_MINIATURA, file=miniatura, file_options=opcoes))
             caminho = base + SUFIXO_COM_MINIATURA  # o nome avisa que a miniatura existe
         except Exception:
             pass
-    sb.storage.from_(BUCKET).upload(path=caminho, file=principal, file_options=opcoes)
+    com_tentativas(lambda: sb.storage.from_(BUCKET).upload(path=caminho, file=principal, file_options=opcoes))
     return caminho
 
 
@@ -118,7 +119,7 @@ def referencia_foto(valor):
 def link_assinado(sb, caminho, segundos=3600):
     """Link temporário para um arquivo do bucket privado (None se falhar)."""
     try:
-        res = sb.storage.from_(BUCKET).create_signed_url(caminho, segundos)
+        res = com_tentativas(lambda: sb.storage.from_(BUCKET).create_signed_url(caminho, segundos))
     except Exception:
         return None
     if isinstance(res, dict):

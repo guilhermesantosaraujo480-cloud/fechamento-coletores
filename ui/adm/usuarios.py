@@ -46,6 +46,43 @@ def _cadastrar(sb):
                 st.error(f"Erro ao cadastrar: {erro}")
 
 
+def _pedidos_de_senha(sb):
+    eu = sessao.usuario_atual()
+    try:
+        pedidos = auth.pedidos_abertos(sb)
+    except Exception:  # noqa: BLE001 — sem a tabela (migracao_v12) ou sem rede
+        st.caption("Pedidos de nova senha indisponíveis agora (rode o `migracao_v12.sql` se ainda não rodou).")
+        return
+    temporaria = st.session_state.get("senha_temporaria")
+    if temporaria:
+        with cartao():
+            st.success(f"Senha temporária de **{temporaria['nome']}** ({temporaria['usuario']}). Ela só aparece agora.")
+            st.code(f"Sua senha temporária do Sistema de Coletas: {temporaria['senha']}\nEntre e crie a sua senha.", language="text")
+            if st.button("Já passei ao usuário", key="fechar_temporaria"):
+                st.session_state.pop("senha_temporaria", None)
+                st.rerun()
+    if not pedidos:
+        return
+    with cartao():
+        st.markdown(f"**🔑 Pedidos de nova senha ({len(pedidos)})**")
+        for p in pedidos:
+            a, b, c = st.columns([3, 2, 1])
+            a.write(f"**{p['nome_completo']}** ({p['usuario']}) · {str(p.get('criado_em') or '')[:16].replace('T', ' ')}")
+            if b.button("Gerar senha temporária", key=f"ped_ok_{p['id']}", use_container_width=True):
+                try:
+                    senha = auth.atender_pedido(sb, p, eu["usuario"])
+                except Exception as erro:  # noqa: BLE001
+                    st.error("Não foi possível gerar agora. Tente novamente em instantes.")
+                    return
+                auditoria.registrar(sb, eu["usuario"], "senha_temporaria_gerada", p["usuario"])
+                st.session_state["senha_temporaria"] = {"usuario": p["usuario"], "nome": p["nome_completo"], "senha": senha}
+                dados.invalidar()
+                st.rerun()
+            if c.button("Ignorar", key=f"ped_no_{p['id']}", use_container_width=True):
+                auth.ignorar_pedido(sb, p, eu["usuario"])
+                st.rerun()
+
+
 def _gerenciar(sb, usuarios, tem_ativo):
     eu = sessao.usuario_atual()
     with cartao():
@@ -72,9 +109,9 @@ def _gerenciar(sb, usuarios, tem_ativo):
                 if problema:
                     st.error(problema)
                 else:
-                    auth.definir_senha(sb, escolhido, nova)
+                    auth.definir_senha(sb, escolhido, nova, exigir_troca=True)
                     auditoria.registrar(sb, eu["usuario"], "senha_redefinida", alvo["usuario"])
-                    st.success("Senha redefinida. O usuário foi desconectado.")
+                    st.success("Senha redefinida. O usuário foi desconectado e vai criar a própria senha no próximo acesso.")
 
         c1, c2 = st.columns(2)
         if c1.button("🚪 Encerrar sessões", use_container_width=True, key=f"enc_{escolhido}"):
@@ -101,6 +138,7 @@ def render(sb):
         erro_banco(erro)
         return
     cabecalho("👥 Usuários", "Cadastre pessoas, redefina senhas e desative quem saiu.")
+    _pedidos_de_senha(sb)
     esquerda, direita = st.columns([2, 3])
     with esquerda:
         _cadastrar(sb)

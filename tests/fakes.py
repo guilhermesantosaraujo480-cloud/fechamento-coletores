@@ -296,6 +296,9 @@ class FakeSt(types.ModuleType):
     def error(self, texto="", *a, **k):
         self.avisos.append(("error", str(texto)))
 
+    def success(self, texto="", *a, **k):
+        self.avisos.append(("success", str(texto)))
+
     def __getattr__(self, nome):  # markdown, caption, metric, dataframe, image, ... = não faz nada
         if nome.startswith("__"):
             raise AttributeError(nome)

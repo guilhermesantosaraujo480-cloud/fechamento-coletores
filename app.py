@@ -14,7 +14,7 @@ except Exception:  # noqa: BLE001 — compatibilidade nunca pode derrubar o app
 
 from streamlit_cookies_controller import CookieController  # noqa: E402
 
-from core import dados, sessao  # noqa: E402
+from core import auth, dados, sessao  # noqa: E402
 from core.db import get_supabase  # noqa: E402
 from ui import estilos, login  # noqa: E402
 from ui.adm.filtros import filtros_sidebar  # noqa: E402
@@ -61,10 +61,16 @@ def area_adm(sb):
         pendentes = dados.contar_pendentes(sb)
     except Exception:
         pendentes = 0
+    try:
+        pedidos_senha = len(auth.pedidos_abertos(sb))
+    except Exception:
+        pedidos_senha = 0
     with st.sidebar:
         st.markdown("##### 🛡️ Painel do administrador")
         if pendentes:
             st.warning(f"⏳ {pendentes} coleta(s) para aprovar")
+        if pedidos_senha:
+            st.warning(f"🔑 {pedidos_senha} pedido(s) de nova senha (aba Usuários)")
     pagina = navegacao(list(PAGINAS_ADM), "nav_adm", local="sidebar")
     modulo, usa_filtro = PAGINAS_ADM[pagina]
     funcao = _desenhar(modulo)
@@ -93,7 +99,7 @@ def _marcador():
     return lambda texto: st.caption(f"🔧 {_time.perf_counter() - inicio:5.1f}s · {texto}")
 
 
-def main():
+def _executar():
     marca = _marcador()
     marca("1/6 início")
     estilos.aplicar()
@@ -111,10 +117,27 @@ def main():
         login.render(sb, cookies)
         return
     sessao.revalidar(sb, cookies)
+    if sessao.usuario_atual().get("trocar_senha"):  # senha temporária: só libera o sistema depois de criar a própria
+        from ui import troca_obrigatoria
+        troca_obrigatoria.render(sb, cookies)
+        return
     barra_superior(sb, cookies)
     marca(f"5/6 logado como {sessao.usuario_atual().get('cargo')}; desenhando a página")
     (area_adm if sessao.eh_adm() else area_coletor)(sb)
     marca("6/6 página desenhada")
+
+
+def main():
+    from ui import falhas
+    falhas.rodar_protegido(_executar, obter_sb=_cliente_para_log)
+
+
+def _cliente_para_log():
+    """Cliente só para registrar falhas na auditoria; se nem ele existir, a mensagem amigável aparece do mesmo jeito."""
+    try:
+        return get_supabase()
+    except BaseException:  # noqa: BLE001 — get_supabase usa st.stop() quando falta configuração
+        return None
 
 
 main()

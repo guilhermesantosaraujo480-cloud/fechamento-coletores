@@ -113,7 +113,7 @@ class TestPaginasAdm(Base):
             premiacoes.render(db, self.filtro())
         self.assertEqual(db.tabelas["premiacoes"][-1]["valor_premiacao"], 12.0)
         ST.respostas.clear()
-        ST.respostas.update({"Cadastrar": True, "Nome completo": "Zé", "Login de acesso": "Z E", "Senha (mínimo 6 caracteres)": "123456"})
+        ST.respostas.update({"Cadastrar": True, "Nome completo": "Zé", "Login de acesso": "Z E", "Senha (mínimo 8 caracteres)": "12345678"})
         usuarios.render(db)
         self.assertTrue(any("Login inválido" in a[1] for a in ST.avisos))
         self.assertEqual(len(db.tabelas["usuarios"]), 2)

@@ -12,6 +12,28 @@ class ErroDivisao(ValueError):
     """Mensagem pronta para mostrar ao administrador."""
 
 
+def _mensagem_do_banco(erro):
+    return str(getattr(erro, "message", None) or erro).strip()
+
+
+def _funcao_ausente(erro):
+    """True se o banco ainda não tem a função (migracao_v13 não rodada): aí usamos o jeito antigo, em etapas."""
+    texto = (_mensagem_do_banco(erro) + " " + str(getattr(erro, "code", ""))).lower()
+    return "could not find the function" in texto or "pgrst202" in texto or "does not exist" in texto
+
+
+def _rpc(sb, nome, argumentos):
+    """Chama a função do banco (tudo ou nada). Devolve (usou_rpc, dados). Sem a função ou sem suporte a rpc: (False, None)."""
+    if not hasattr(sb, "rpc"):
+        return False, None
+    try:
+        return True, sb.rpc(nome, argumentos).execute().data
+    except Exception as erro:  # noqa: BLE001
+        if _funcao_ausente(erro):
+            return False, None
+        raise ErroDivisao(_mensagem_do_banco(erro)) from erro
+
+
 def partes(valor_total):
     """(parte do dono, parte do parceiro) em reais. Em centavos; o centavo que sobra fica com o dono."""
     centavos = int(round(float(valor_total) * 100))
@@ -54,6 +76,10 @@ def dividir(sb, coleta_id, parceiro):
     if motivo:
         raise ErroDivisao(f"Coleta #{coleta_id}: {motivo}.")
     dono_valor, parceiro_valor = partes(original["valor_total"])
+    usou, dados = _rpc(sb, "dividir_coleta", {"p_id": int(original["id"]), "p_parceiro": parceiro})
+    if usou:  # uma operação única no banco: ou faz tudo ou não faz nada
+        linha = (dados or [{}])[0] if isinstance(dados, list) else (dados or {})
+        return int(linha.get("novo_id", 0)), float(linha.get("parte_dono", dono_valor)), float(linha.get("parte_parceiro", parceiro_valor))
     novo = {"data": original["data"], "coletor": parceiro, "quantidade": int(original["quantidade"] or 0), "foto_url": original["foto_url"],
             "status": "Aprovado", "valor_total": parceiro_valor, "pago": False, "qtd_acrescimo": 0,
             "divisao_de": int(original["id"]), "dividida_com": original["coletor"]}
@@ -80,6 +106,9 @@ def desfazer(sb, filho_id):
         raise ErroDivisao("Esta linha não é a parte de um parceiro.")
     if filho.get("pago") in (True, "true", "True", "t"):
         raise ErroDivisao("A parte do parceiro já está marcada como paga. Desmarque o pagamento antes de desfazer.")
+    usou, pai_id = _rpc(sb, "desfazer_divisao", {"p_filho": int(filho["id"])})
+    if usou:
+        return int(pai_id)
     pai = _ler(sb, filho["divisao_de"])
     if pai.get("pago") in (True, "true", "True", "t"):
         raise ErroDivisao("A coleta original já está marcada como paga. Desmarque o pagamento antes de desfazer.")
