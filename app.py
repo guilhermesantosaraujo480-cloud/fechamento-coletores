@@ -99,13 +99,29 @@ def _marcador():
     return lambda texto: st.caption(f"🔧 {_time.perf_counter() - inicio:5.1f}s · {texto}")
 
 
+def _cookies():
+    try:
+        return sessao.CookiesSeguros(CookieController())
+    except Exception:  # noqa: BLE001 — sem cookies o login ainda funciona (só não "mantém conectado")
+        return sessao.CookiesSeguros(None)
+
+
+def _plano_b(obter_sb):
+    """Se a abertura do site falhar antes do login, ainda mostra a tela de login (sem cookies) para ninguém ficar trancado de fora."""
+    if sessao.usuario_atual():
+        return
+    sb = obter_sb()
+    if sb is not None:
+        login.render(sb, sessao.CookiesSeguros(None))
+
+
 def _executar():
     marca = _marcador()
     marca("1/6 início")
     estilos.aplicar()
     sb = get_supabase()
     marca("2/6 banco de dados conectado")
-    cookies = CookieController()
+    cookies = _cookies()
     marca("3/6 cookies carregados")
     if "session" in st.query_params:  # links antigos carregavam o token na URL
         del st.query_params["session"]
@@ -129,7 +145,7 @@ def _executar():
 
 def main():
     from ui import falhas
-    falhas.rodar_protegido(_executar, obter_sb=_cliente_para_log)
+    falhas.rodar_protegido(_executar, obter_sb=_cliente_para_log, plano_b=_plano_b)
 
 
 def _cliente_para_log():

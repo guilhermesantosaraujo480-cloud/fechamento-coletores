@@ -210,3 +210,42 @@ class TestDivisaoAtomica(unittest.TestCase):
         novo, dono, parc = divisao.dividir(sb, 1, "Bia")
         self.assertEqual((dono, parc), (105.0, 105.0))
         self.assertEqual(len(sb.tabelas["coletas"]), 2)
+
+
+class TestPlanoB(unittest.TestCase):
+    def setUp(self):
+        ST.session_state.clear(); ST.respostas.clear(); ST.avisos.clear()
+
+    def test_cookies_que_falham_nao_impedem_nada(self):
+        from core import sessao
+
+        class Quebrado:
+            def get(self, n): raise TypeError("argument of type 'NoneType' is not a container or iterable")
+            def set(self, *a, **k): raise TypeError("x")
+            def remove(self, n): raise TypeError("x")
+        c = sessao.CookiesSeguros(Quebrado())
+        self.assertIsNone(c.get("a")); c.set("a", "b"); c.remove("a")
+        sessao.CookiesSeguros(None).set("a", "b")
+
+    def test_plano_b_mostra_o_login_quando_a_abertura_falha(self):
+        from ui import falhas
+        chamadas = []
+        falhas.rodar_protegido(lambda: (_ for _ in ()).throw(TypeError("x")), obter_sb=lambda: object(),
+                               plano_b=lambda obter: chamadas.append(obter()))
+        self.assertEqual(len(chamadas), 1)
+
+    def test_plano_b_quebrado_nao_derruba(self):
+        from ui import falhas
+        falhas.rodar_protegido(lambda: (_ for _ in ()).throw(TypeError("x")), plano_b=lambda obter: 1 / 0)
+        self.assertTrue(ST.avisos)
+
+    def test_local_do_erro_aparece_na_auditoria(self):
+        from ui import falhas
+        sb = fakes.FakeSupabase(auditoria=[])
+
+        def quebra():
+            None in None  # noqa: B015
+        falhas.rodar_protegido(quebra, obter_sb=lambda: sb)
+        detalhe = sb.tabelas["auditoria"][0]["detalhe"]
+        self.assertIn("TypeError", detalhe)
+        self.assertIn("test_robustez.py", detalhe)

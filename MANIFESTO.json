@@ -44,8 +44,8 @@
   "sha256": "fbbbfa06c7a02ed24328a924046e097cfe865ff0dfd0aeef69131337b2a74c30"
  },
  "app.py": {
-  "bytes": 5382,
-  "sha256": "f99f735ffdff8895b55bef72a6560fa412dfe1fd2ca90b58e1df251c78b3411b"
+  "bytes": 5932,
+  "sha256": "29b1eb799d4036480610863360490d269bf85e46859c576c5c8c280d9991a826"
  },
  "bipagem/__init__.py": {
   "bytes": 342,
@@ -136,8 +136,8 @@
   "sha256": "cb1c3b33bd7846e572781cc1c0ec736bc966a44f87aeea732856ea4fc65ca5fe"
  },
  "core/sessao.py": {
-  "bytes": 2211,
-  "sha256": "9bafa2da80e8886481a41f3ae3c4176357ea95dbbfc981a7693065a48b197c63"
+  "bytes": 2978,
+  "sha256": "87aeec3ac3dd97106e87a2261071e29f91a441bfaa6227c1aaa71d1b074f63ec"
  },
  "core/utils.py": {
   "bytes": 3806,
@@ -408,8 +408,8 @@
   "sha256": "2c8cf32381afba807f6e660c01ab69774f2ea4757229627e33b40444eb211418"
  },
  "tests/test_robustez.py": {
-  "bytes": 8722,
-  "sha256": "9d32070e211ebfec73594de881752a48b1bd8c95965a51458a262c27e18f81f6"
+  "bytes": 10329,
+  "sha256": "a69260bff9e299447d42e340edbef770afe876e94d23099eb06febf820f33064"
  },
  "tests/test_rotas.py": {
   "bytes": 22492,
@@ -520,12 +520,12 @@
   "sha256": "4673751c8363d2d2442b0a8b74a181fbb0c7bb6d57b699edf8a8db4f3e573e66"
  },
  "ui/falhas.py": {
-  "bytes": 1810,
-  "sha256": "1a4f269ceb42492ee64a103eae3f9a6c4acacb844a10f6a7fb0ff42d4b90b6d3"
+  "bytes": 2637,
+  "sha256": "368908ced8fbbd33d7dfd2c6cf842fd9481522c1aaf6964d03dac5723bb586cb"
  },
  "ui/login.py": {
-  "bytes": 2145,
-  "sha256": "6f5b19b81fca2334fe6cc8456b9207ff884db4ccb92129ec337ad52a361b6bd8"
+  "bytes": 2279,
+  "sha256": "181f987e680a7f7b4ef860af36abcefe26b0a171b9a26880a2a8dded7534eaf5"
  },
  "ui/troca_obrigatoria.py": {
   "bytes": 1680,

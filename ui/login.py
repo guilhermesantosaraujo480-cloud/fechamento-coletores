@@ -37,7 +37,10 @@ def render(sb, cookies):
             senha = st.text_input("Senha", type="password")
             lembrar = st.checkbox("Manter-me conectado neste aparelho", value=True)
             enviar = st.form_submit_button("Entrar", type="primary", use_container_width=True)
-        _esqueci(sb)
+        try:
+            _esqueci(sb)
+        except Exception:  # noqa: BLE001 — o "esqueci a senha" nunca pode impedir o login normal
+            pass
         if not enviar:
             return
         try:

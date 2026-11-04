@@ -6,6 +6,31 @@ import streamlit as st
 from . import auth
 
 COOKIE = "vivo_coletas_session"
+
+
+class CookiesSeguros:
+    """Envolve o controlador de cookies: se a biblioteca falhar (versão nova, navegador sem cookies...), o sistema continua sem
+    "manter conectado" em vez de impedir o login."""
+
+    def __init__(self, interno=None):
+        self._interno = interno
+
+    def _tentar(self, nome, *args, **kwargs):
+        if self._interno is None:
+            return None
+        try:
+            return getattr(self._interno, nome)(*args, **kwargs)
+        except Exception:  # noqa: BLE001
+            return None
+
+    def get(self, nome):
+        return self._tentar("get", nome)
+
+    def set(self, nome, valor, **kwargs):
+        return self._tentar("set", nome, valor, **kwargs)
+
+    def remove(self, nome):
+        return self._tentar("remove", nome)
 DURACAO_COOKIE_SEG = 14 * 24 * 3600
 
 
