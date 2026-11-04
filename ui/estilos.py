@@ -39,5 +39,35 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 """
 
 
+# Recarrega a página sozinha (no máximo 1 vez por minuto) quando o navegador não consegue baixar um pedaço do site
+# ("Failed to fetch dynamically imported module": acontece com internet oscilando ou com a aba aberta durante uma atualização do site).
+JS_RECARREGAR = """
+<script>
+(function () {
+  try {
+    var p = window.parent;
+    if (p.__recargaPorFalhaDeModulo) return;
+    p.__recargaPorFalhaDeModulo = true;
+    function recarregar() {
+      var k = "recarga_por_modulo", agora = Date.now();
+      var ultimo = Number(p.sessionStorage.getItem(k) || 0);
+      if (agora - ultimo > 60000) { p.sessionStorage.setItem(k, String(agora)); p.location.reload(); }
+    }
+    var padrao = /dynamically imported module|Importing a module script failed|ChunkLoadError|Loading chunk/i;
+    function trata(m) { if (padrao.test(String(m || ""))) recarregar(); }
+    p.addEventListener("vite:preloadError", function (e) { e.preventDefault && e.preventDefault(); recarregar(); });
+    p.addEventListener("unhandledrejection", function (e) { trata(e.reason && (e.reason.message || e.reason)); });
+    p.addEventListener("error", function (e) { trata(e.message); });
+  } catch (e) {}
+})();
+</script>
+"""
+
+
 def aplicar():
     st.markdown(CSS, unsafe_allow_html=True)
+    try:
+        import streamlit.components.v1 as components
+        components.html(JS_RECARREGAR, height=0)
+    except Exception:  # noqa: BLE001 — é só um reforço; o site funciona sem ele
+        pass

@@ -478,6 +478,8 @@ enxerga problemas de aparência; teste visualmente no navegador e no celular ap�
     - **Estabilidade:** `requirements.txt` com limite de versão maior (evita um redeploy quebrar por biblioteca nova); novo workflow `.github/workflows/testes.yml` roda os testes a cada envio ao GitHub (aba Actions).
     - 21 testes novos (320 no total). **Pendente:** conferir no site real o fluxo "Esqueci a senha" de ponta a ponta e, na aba Actions, se o workflow *Testes* ficou verde.
 
+    - **"Failed to fetch dynamically imported module ...FileUploader..." (04/11/2026):** erro do navegador (não do nosso Python): o pedaço do site que abre o anexo de foto não baixou, por internet oscilando ou aba aberta durante uma atualização do site.
+      Provável causa do erro que o coletor viu na foto. Correção: `ui/estilos.py` recarrega a página sozinha (no máx. 1x por minuto) quando detecta essa falha. Manual: recarregar a página (Ctrl+F5). Evitar enviar atualizações ao GitHub no horário de uso.
 ---
 
 ## 16. Pendências e ideias

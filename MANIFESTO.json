@@ -40,8 +40,8 @@
   "sha256": "aa3bf6ddb35940a6f7abe4791d2321de0efd53708aabb3e2cc6744fe1de5e0d2"
  },
  "README.md": {
-  "bytes": 59457,
-  "sha256": "fbbbfa06c7a02ed24328a924046e097cfe865ff0dfd0aeef69131337b2a74c30"
+  "bytes": 59980,
+  "sha256": "ea695289b233fd0be6716933a47542ea624bf888024b64b574b232286f60efbf"
  },
  "app.py": {
   "bytes": 5932,
@@ -516,8 +516,8 @@
   "sha256": "538d798cd8edff1292c18804210631dcefa0b339be8709b82fb58b5c7bc88b34"
  },
  "ui/estilos.py": {
-  "bytes": 2160,
-  "sha256": "4673751c8363d2d2442b0a8b74a181fbb0c7bb6d57b699edf8a8db4f3e573e66"
+  "bytes": 3570,
+  "sha256": "3f9976141e588e2f0931326e8309c2008c75bcdd2bb2f8944d6b89a5a9f761fd"
  },
  "ui/falhas.py": {
   "bytes": 2637,
